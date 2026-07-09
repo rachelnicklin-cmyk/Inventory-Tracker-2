@@ -321,6 +321,7 @@ td{padding:8px 9px;vertical-align:middle}
       <button class="tab-btn active" onclick="showPage('inventory')">Inventory</button>
       <button class="tab-btn" onclick="showPage('scan')">📷 Scan</button>
       <button class="tab-btn" onclick="showPage('invoice')">Invoice</button>
+      <button class="tab-btn" onclick="showPage('job')">🔧 Job</button>
       <button class="tab-btn" onclick="showPage('stocktake')">Stock Take</button>
       <button class="tab-btn" onclick="showPage('log')">Log</button>
       <button class="tab-btn admin-only" onclick="showPage('admin')" style="display:none">Admin</button>
@@ -515,6 +516,90 @@ td{padding:8px 9px;vertical-align:middle}
     </div>
   </div>
 
+  <!-- JOB MODE -->
+  <div class="page" id="page-job">
+    <div style="padding:14px">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <h2 style="font-size:15px;font-weight:700;color:#e8edf2">🔧 Job Mode</h2>
+        <span id="jobDraftBadge" style="display:none;font-size:11px;background:#1e3248;color:#3a7bd5;padding:3px 8px;border-radius:10px;font-weight:600">Draft saved</span>
+      </div>
+
+      <!-- Start a job -->
+      <div id="jobSetupSection">
+        <div style="background:#162030;border:1px solid #1e3248;border-radius:9px;padding:14px;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Start New Job</div>
+          <input type="text" id="jobAddressInput" placeholder="Site address / job description" style="width:100%;box-sizing:border-box;padding:9px 12px;background:#0f1e30;border:1px solid #2a4060;border-radius:7px;color:#e8edf2;font-size:13px;outline:none;margin-bottom:10px">
+          <button class="btn btn-primary" style="width:100%;padding:10px;font-size:13px;font-weight:600" onclick="startJob()">Start Job</button>
+        </div>
+
+        <!-- Open draft if one exists -->
+        <div id="jobExistingDraft" style="display:none;background:#1a2840;border:1px solid #2a5080;border-radius:9px;padding:12px;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Saved Draft</div>
+          <div id="jobDraftAddressDisplay" style="font-size:13px;color:#e8edf2;font-weight:600;margin-bottom:8px"></div>
+          <div id="jobDraftItemCount" style="font-size:12px;color:#6b8fad;margin-bottom:10px"></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" style="flex:1;padding:8px;font-size:12px" onclick="resumeJobDraft()">Resume Draft</button>
+            <button class="btn btn-warn" style="padding:8px 12px;font-size:12px" onclick="discardJobDraft()">Discard</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active job scanning section -->
+      <div id="jobActiveSection" style="display:none">
+
+        <!-- Job header -->
+        <div style="background:#1a2840;border:1px solid #2a5080;border-radius:9px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <div>
+            <div style="font-size:10px;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px">Active Job</div>
+            <div id="jobActiveAddress" style="font-size:13px;font-weight:700;color:#e8edf2;margin-top:2px"></div>
+          </div>
+          <button class="btn btn-warn" style="padding:5px 10px;font-size:11px" onclick="cancelJob()">Cancel</button>
+        </div>
+
+        <!-- Scanner area -->
+        <div style="background:#162030;border:1px solid #1e3248;border-radius:9px;padding:12px;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Scan Items</div>
+          <div id="jobScannerPlaceholder" style="text-align:center;padding:20px 0;color:#4a6880;font-size:13px">Tap to start camera</div>
+          <video id="jobScanVideo" style="display:none;width:100%;border-radius:7px;background:#000;max-height:220px;object-fit:cover" playsinline muted></video>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button id="jobStartScanBtn" class="btn btn-primary" style="flex:1;padding:9px;font-size:13px" onclick="startJobScanner()">📷 Start Camera</button>
+            <button id="jobStopScanBtn" class="btn btn-outline" style="display:none;flex:1;padding:9px;font-size:13px" onclick="stopJobScanner()">⏹ Stop</button>
+          </div>
+          <!-- flash feedback -->
+          <div id="jobScanFlash" style="display:none;text-align:center;margin-top:10px;padding:10px;border-radius:7px;font-size:13px;font-weight:600"></div>
+          <!-- manual entry -->
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <input type="text" id="jobManualBarcode" placeholder="Or type barcode manually" style="flex:1;padding:8px 10px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+            <button class="btn btn-outline" style="padding:8px 12px;font-size:12px" onclick="jobManualAdd()">Add</button>
+          </div>
+        </div>
+
+        <!-- Item list -->
+        <div style="background:#162030;border:1px solid #1e3248;border-radius:9px;padding:12px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px">Items Used <span id="jobItemCount" style="color:#3a7bd5"></span></div>
+            <button class="btn btn-outline" style="padding:4px 9px;font-size:11px;display:none" id="jobClearBtn" onclick="clearJobList()">Clear All</button>
+          </div>
+          <div id="jobItemList"><div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No items scanned yet</div></div>
+        </div>
+
+        <!-- Complete button -->
+        <button id="jobCompleteBtn" class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;font-weight:700;display:none;background:linear-gradient(135deg,#1a8a4a,#147a3e)" onclick="completeJob()">
+          ✅ Complete Job & Deduct Stock
+        </button>
+      </div>
+
+      <!-- Past jobs -->
+      <div id="jobHistorySection" style="margin-top:16px">
+        <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Recent Jobs</div>
+        <div id="jobHistoryList"><div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No completed jobs yet</div></div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- ADMIN -->
   <div class="page" id="page-admin">
     <div style="padding:14px">
@@ -540,6 +625,35 @@ td{padding:8px 9px;vertical-align:middle}
           <button class="btn btn-warn" style="padding:6px 11px;font-size:12px" onclick="reloadData()">↻ Reload from Firebase</button>
         </div>
       </div>
+      <div class="admin-section">
+        <h3>📋 Job Reports</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <select id="jobReportEngineer" style="padding:6px 10px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+              <option value="">All Engineers</option>
+            </select>
+            <input type="date" id="jobReportFrom" style="padding:6px 10px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+            <span style="color:#4a6880;font-size:12px">to</span>
+            <input type="date" id="jobReportTo" style="padding:6px 10px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+            <button class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="loadJobReport()">Show Jobs</button>
+          </div>
+        </div>
+        <div id="jobReportList"><div style="color:#4a6880;font-size:12px;text-align:center;padding:12px 0">Set filters above and click Show Jobs</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Job Report Modal -->
+<div class="overlay" id="jobReportModal" onclick="if(event.target===this)closeModal('jobReportModal')">
+  <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <h2 id="jobReportModalTitle" style="font-size:14px;margin-bottom:4px">Job Report</h2>
+    <div id="jobReportModalMeta" style="font-size:11px;color:#6b8fad;margin-bottom:14px"></div>
+    <div id="jobReportModalBody"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-primary" style="padding:8px 14px;font-size:12px" onclick="printJobReport()">🖨 Print / Save PDF</button>
+      <button class="btn btn-outline" style="padding:8px 14px;font-size:12px" onclick="exportJobReportCSV()">↓ Export CSV</button>
+      <button class="btn btn-outline" style="padding:8px 14px;font-size:12px" onclick="closeModal('jobReportModal')">Close</button>
     </div>
   </div>
 </div>
@@ -1161,7 +1275,9 @@ function showPage(name) {
   if (name === 'log') loadLog();
   if (name === 'admin') renderAdminPanel();
   if (name === 'stocktake') renderStockTakePage();
-  if (name !== 'scan') stopScanner(); // stop camera when leaving scan page
+  if (name !== 'scan') stopScanner();
+  if (name !== 'job') stopJobScanner();
+  if (name === 'job') renderJobPage();
 }
 
 // ════════════════════════════════════════
@@ -1661,6 +1777,7 @@ function renderAdminPanel() {
       </div>
     </div>`).join('');
   renderLocationList();
+  populateJobReportEngineers();
 }
 async function loadLocations() {
   try {
@@ -2354,20 +2471,30 @@ async function startScanner() {
 
   try {
     if (typeof ZXing === 'undefined') throw new Error('Barcode library not loaded');
-    codeReader = new ZXing.BrowserMultiFormatReader();
+
+    // Use getUserMedia directly — most reliable on mobile (back camera via facingMode)
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = stream;
+    await video.play();
     scanActive = true;
-    const deviceList = await ZXing.BrowserCodeReader.listVideoInputDevices();
-    // Prefer back camera
-    const backCam = deviceList.find(d => /back|rear|environment/i.test(d.label)) || deviceList[deviceList.length-1];
-    const deviceId = backCam?.deviceId;
-    await codeReader.decodeFromVideoDevice(deviceId, video, (result, err) => {
+
+    // Use ZXing to decode from the live stream
+    codeReader = new ZXing.BrowserMultiFormatReader();
+    codeReader.decodeFromStream(stream, video, (result, err) => {
       if (result && scanActive) {
         scanActive = false;
         handleBarcode(result.getText());
       }
     });
   } catch(e) {
-    toast('Camera error: ' + e.message + '. Try manual entry below.', 'error');
+    const msg = e.name === 'NotAllowedError'
+      ? 'Camera permission denied — tap the camera icon in your browser address bar to allow access'
+      : e.name === 'NotFoundError'
+      ? 'No camera found on this device'
+      : (e.message || String(e));
+    toast('Camera error: ' + msg, 'error');
     stopScanner();
     document.getElementById('scannerPlaceholder').style.display = 'block';
     video.style.display = 'none';
@@ -2378,7 +2505,10 @@ function stopScanner() {
   scanActive = false;
   if (codeReader) { try { codeReader.reset(); } catch(e){} codeReader = null; }
   const video = document.getElementById('scanVideo');
-  if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
   document.getElementById('startScanBtn').style.display = 'flex';
   document.getElementById('stopScanBtn').style.display = 'none';
 }
@@ -2612,6 +2742,594 @@ async function printSelectedLabels() {
     <script>window.onload = () => setTimeout(() => window.print(), 300);<\/script>
   </body></html>`);
   win.document.close();
+}
+
+init();
+
+// ════════════════════════════════════════
+//  JOB MODE
+// ════════════════════════════════════════
+let jobActive = false;
+let jobAddress = '';
+let jobItems = []; // [{id, name, barcode, qty}]
+let jobDraftId = null;
+let jobCodeReader = null;
+let jobScanActive = false;
+let jobScanCooldown = false;
+
+function renderJobPage() {
+  loadJobDraft();
+  loadJobHistory();
+}
+
+// ── Draft persistence ──
+async function loadJobDraft() {
+  if (!currentUser) return;
+  try {
+    const snap = await db.collection('jobs')
+      .where('engineerUid', '==', currentUser.uid || currentUser.name)
+      .where('status', '==', 'draft')
+      .orderBy('updatedAt', 'desc').limit(1).get();
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      const data = doc.data();
+      jobDraftId = doc.id;
+      document.getElementById('jobExistingDraft').style.display = 'block';
+      document.getElementById('jobDraftAddressDisplay').textContent = data.address;
+      document.getElementById('jobDraftItemCount').textContent =
+        `${(data.items||[]).length} item type(s) saved`;
+    } else {
+      document.getElementById('jobExistingDraft').style.display = 'none';
+      jobDraftId = null;
+    }
+  } catch(e) { console.warn('Draft load failed', e); }
+}
+
+async function saveDraftToFirestore() {
+  if (!currentUser) return;
+  const payload = {
+    address: jobAddress,
+    items: jobItems,
+    engineerUid: currentUser.uid || currentUser.name,
+    engineerName: currentUser.name,
+    status: 'draft',
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  try {
+    if (jobDraftId) {
+      await db.collection('jobs').doc(jobDraftId).update(payload);
+    } else {
+      const ref = await db.collection('jobs').add({...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+      jobDraftId = ref.id;
+    }
+    document.getElementById('jobDraftBadge').style.display = 'inline';
+    setTimeout(() => document.getElementById('jobDraftBadge').style.display = 'none', 2000);
+  } catch(e) { console.warn('Draft save failed', e); }
+}
+
+// ── Start / Resume / Discard ──
+function startJob() {
+  const addr = document.getElementById('jobAddressInput').value.trim();
+  if (!addr) { toast('Please enter a site address', 'error'); return; }
+  jobAddress = addr;
+  jobItems = [];
+  jobDraftId = null;
+  jobActive = true;
+  openJobActive();
+  saveDraftToFirestore();
+}
+
+async function resumeJobDraft() {
+  if (!jobDraftId) return;
+  try {
+    const doc = await db.collection('jobs').doc(jobDraftId).get();
+    const data = doc.data();
+    jobAddress = data.address;
+    jobItems = data.items || [];
+    jobActive = true;
+    openJobActive();
+    renderJobItemList();
+  } catch(e) { toast('Could not load draft', 'error'); }
+}
+
+async function discardJobDraft() {
+  if (!jobDraftId) return;
+  if (!confirm('Discard this saved draft?')) return;
+  try {
+    await db.collection('jobs').doc(jobDraftId).delete();
+    jobDraftId = null;
+    document.getElementById('jobExistingDraft').style.display = 'none';
+    toast('Draft discarded', 'info');
+  } catch(e) { toast('Could not discard draft', 'error'); }
+}
+
+function openJobActive() {
+  document.getElementById('jobSetupSection').style.display = 'none';
+  document.getElementById('jobActiveSection').style.display = 'block';
+  document.getElementById('jobHistorySection').style.display = 'none';
+  document.getElementById('jobActiveAddress').textContent = jobAddress;
+  renderJobItemList();
+}
+
+function cancelJob() {
+  if (!confirm('Cancel this job? The draft will remain saved.')) return;
+  stopJobScanner();
+  jobActive = false;
+  document.getElementById('jobSetupSection').style.display = 'block';
+  document.getElementById('jobActiveSection').style.display = 'none';
+  document.getElementById('jobHistorySection').style.display = 'block';
+  document.getElementById('jobAddressInput').value = '';
+  loadJobDraft();
+  loadJobHistory();
+}
+
+// ── Scanner ──
+async function startJobScanner() {
+  document.getElementById('jobScannerPlaceholder').style.display = 'none';
+  document.getElementById('jobStartScanBtn').style.display = 'none';
+  document.getElementById('jobStopScanBtn').style.display = 'flex';
+  const video = document.getElementById('jobScanVideo');
+  video.style.display = 'block';
+  try {
+    if (typeof ZXing === 'undefined') throw new Error('Barcode library not loaded');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = stream;
+    await video.play();
+    jobScanActive = true;
+    jobCodeReader = new ZXing.BrowserMultiFormatReader();
+    jobCodeReader.decodeFromStream(stream, video, (result, err) => {
+      if (result && jobScanActive && !jobScanCooldown) {
+        jobScanCooldown = true;
+        handleJobBarcode(result.getText());
+        setTimeout(() => { jobScanCooldown = false; }, 1500);
+      }
+    });
+  } catch(e) {
+    const msg = e.name === 'NotAllowedError' ? 'Camera permission denied' :
+                e.name === 'NotFoundError' ? 'No camera found' : (e.message || String(e));
+    toast('Camera error: ' + msg, 'error');
+    stopJobScanner();
+  }
+}
+
+function stopJobScanner() {
+  jobScanActive = false;
+  if (jobCodeReader) { try { jobCodeReader.reset(); } catch(e){} jobCodeReader = null; }
+  const video = document.getElementById('jobScanVideo');
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
+  const startBtn = document.getElementById('jobStartScanBtn');
+  const stopBtn = document.getElementById('jobStopScanBtn');
+  if (startBtn) startBtn.style.display = 'flex';
+  if (stopBtn) stopBtn.style.display = 'none';
+}
+
+function jobManualAdd() {
+  const code = document.getElementById('jobManualBarcode').value.trim();
+  if (!code) return;
+  handleJobBarcode(code);
+  document.getElementById('jobManualBarcode').value = '';
+}
+
+function handleJobBarcode(code) {
+  // Find item in inventory
+  const item = items.find(i => i.barcode === code);
+  const flash = document.getElementById('jobScanFlash');
+  if (!item) {
+    flash.style.display = 'block';
+    flash.style.background = '#3a1010';
+    flash.style.color = '#ff6b6b';
+    flash.textContent = '⚠ Barcode not found: ' + code;
+    setTimeout(() => flash.style.display = 'none', 2500);
+    return;
+  }
+  // Add or increment
+  const existing = jobItems.find(j => j.id === item.id);
+  if (existing) {
+    existing.qty++;
+  } else {
+    jobItems.push({ id: item.id, name: item.name, barcode: code, qty: 1 });
+  }
+  flash.style.display = 'block';
+  flash.style.background = '#0f2e1a';
+  flash.style.color = '#4cdf8a';
+  flash.textContent = '✓ ' + item.name + (existing ? ` (×${existing.qty})` : '');
+  setTimeout(() => flash.style.display = 'none', 1500);
+  renderJobItemList();
+  saveDraftToFirestore();
+}
+
+function renderJobItemList() {
+  const list = document.getElementById('jobItemList');
+  const count = document.getElementById('jobItemCount');
+  const clearBtn = document.getElementById('jobClearBtn');
+  const completeBtn = document.getElementById('jobCompleteBtn');
+  if (!jobItems.length) {
+    list.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No items scanned yet</div>';
+    count.textContent = '';
+    clearBtn.style.display = 'none';
+    completeBtn.style.display = 'none';
+    return;
+  }
+  const total = jobItems.reduce((s, i) => s + i.qty, 0);
+  count.textContent = `(${total} unit${total!==1?'s':''})`;
+  clearBtn.style.display = 'inline';
+  completeBtn.style.display = 'block';
+  list.innerHTML = jobItems.map((ji, idx) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e3248">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ji.name}</div>
+        <div style="font-size:11px;color:#4a6880">${ji.barcode}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-left:8px">
+        <button onclick="jobAdjQty(${idx},-1)" style="background:#1e3248;border:none;color:#e8edf2;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1">−</button>
+        <span style="font-size:14px;font-weight:700;color:#3a7bd5;min-width:20px;text-align:center">${ji.qty}</span>
+        <button onclick="jobAdjQty(${idx},1)" style="background:#1e3248;border:none;color:#e8edf2;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1">+</button>
+        <button onclick="jobRemoveItem(${idx})" style="background:#3a1010;border:none;color:#ff6b6b;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:11px">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+function jobAdjQty(idx, delta) {
+  jobItems[idx].qty = Math.max(1, (jobItems[idx].qty || 1) + delta);
+  renderJobItemList();
+  saveDraftToFirestore();
+}
+
+function jobRemoveItem(idx) {
+  jobItems.splice(idx, 1);
+  renderJobItemList();
+  saveDraftToFirestore();
+}
+
+function clearJobList() {
+  if (!confirm('Clear all items from this job?')) return;
+  jobItems = [];
+  renderJobItemList();
+  saveDraftToFirestore();
+}
+
+// ── Complete Job ──
+async function completeJob() {
+  if (!jobItems.length) { toast('No items to deduct', 'error'); return; }
+  if (!confirm(`Complete job at "${jobAddress}" and deduct ${jobItems.reduce((s,i)=>s+i.qty,0)} units from ${currentUser.name}'s van?`)) return;
+
+  stopJobScanner();
+  const vanLocation = currentUser.name + "'s Van";
+  const errors = [];
+
+  try {
+    setSync('busy');
+    for (const ji of jobItems) {
+      const item = items.find(i => i.id === ji.id);
+      if (!item) { errors.push(ji.name + ' not found'); continue; }
+      const locs = getLocations(item);
+      const vanQty = locs[vanLocation] || 0;
+      if (vanQty < ji.qty) {
+        errors.push(`${ji.name}: only ${vanQty} in van (need ${ji.qty})`);
+        continue;
+      }
+      const newLocs = {...locs};
+      newLocs[vanLocation] = vanQty - ji.qty;
+      if (newLocs[vanLocation] === 0) delete newLocs[vanLocation];
+      await db.collection('items').doc(ji.id).update({ locations: newLocs });
+    }
+
+    // Save completed job to Firestore
+    const jobPayload = {
+      address: jobAddress,
+      items: jobItems,
+      engineerUid: currentUser.uid || currentUser.name,
+      engineerName: currentUser.name,
+      vanLocation,
+      status: 'completed',
+      completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (jobDraftId) {
+      await db.collection('jobs').doc(jobDraftId).update(jobPayload);
+    } else {
+      await db.collection('jobs').add({...jobPayload, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    }
+
+    await logAction('job', `Job completed: ${jobAddress}`,
+      `${currentUser.name} used ${jobItems.reduce((s,i)=>s+i.qty,0)} items — ${jobItems.map(i=>i.name+'×'+i.qty).join(', ')}`);
+
+    setSync('ok');
+    if (errors.length) {
+      toast(`Job completed with ${errors.length} issue(s) — check log`, 'error');
+      console.warn('Job errors:', errors);
+    } else {
+      toast('Job completed! Stock deducted.', 'success');
+    }
+
+    // Reset state
+    jobActive = false;
+    jobDraftId = null;
+    jobAddress = '';
+    jobItems = [];
+    document.getElementById('jobSetupSection').style.display = 'block';
+    document.getElementById('jobActiveSection').style.display = 'none';
+    document.getElementById('jobHistorySection').style.display = 'block';
+    document.getElementById('jobAddressInput').value = '';
+    await reloadData();
+    loadJobHistory();
+    loadJobDraft();
+
+  } catch(e) {
+    setSync('err');
+    toast('Error completing job: ' + e.message, 'error');
+  }
+}
+
+// ── History ──
+async function loadJobHistory() {
+  const el = document.getElementById('jobHistoryList');
+  if (!el || !currentUser) return;
+  try {
+    const snap = await db.collection('jobs')
+      .where('engineerUid', '==', currentUser.uid || currentUser.name)
+      .where('status', '==', 'completed')
+      .orderBy('completedAt', 'desc').limit(10).get();
+    if (snap.empty) {
+      el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No completed jobs yet</div>';
+      return;
+    }
+    el.innerHTML = snap.docs.map(d => {
+      const j = d.data();
+      const ts = j.completedAt?.toDate?.();
+      const dateStr = ts ? ts.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : 'Unknown date';
+      const total = (j.items||[]).reduce((s,i)=>s+i.qty,0);
+      return `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:10px 12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div style="font-size:13px;font-weight:600;color:#e8edf2;flex:1">${j.address}</div>
+          <div style="font-size:11px;color:#3a7bd5;white-space:nowrap">${total} unit${total!==1?'s':''}</div>
+        </div>
+        <div style="font-size:11px;color:#4a6880;margin-top:3px">${dateStr}</div>
+        <div style="font-size:11px;color:#6b8fad;margin-top:4px">${(j.items||[]).map(i=>i.name+' ×'+i.qty).join(' · ')}</div>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:16px">Could not load history</div>'; }
+}
+
+// ════════════════════════════════════════
+//  JOB REPORTS (Admin)
+// ════════════════════════════════════════
+let jobReportData = []; // cached for export
+
+function populateJobReportEngineers() {
+  const sel = document.getElementById('jobReportEngineer');
+  if (!sel) return;
+  const engineers = [...new Set(loginUsers.map(u => u.name))];
+  sel.innerHTML = '<option value="">All Engineers</option>' +
+    engineers.map(n => `<option value="${n}">${n}</option>`).join('');
+}
+
+async function loadJobReport() {
+  const engineerFilter = document.getElementById('jobReportEngineer').value;
+  const fromVal = document.getElementById('jobReportFrom').value;
+  const toVal = document.getElementById('jobReportTo').value;
+  const el = document.getElementById('jobReportList');
+  el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:12px 0">Loading...</div>';
+
+  try {
+    let query = db.collection('jobs').where('status', '==', 'completed').orderBy('completedAt', 'desc');
+    if (engineerFilter) query = query.where('engineerName', '==', engineerFilter);
+    const snap = await query.limit(200).get();
+
+    let docs = snap.docs.map(d => ({id: d.id, ...d.data()}));
+
+    // Client-side date filter (Firestore compound queries are limited)
+    if (fromVal) {
+      const from = new Date(fromVal);
+      docs = docs.filter(j => j.completedAt?.toDate?.() >= from);
+    }
+    if (toVal) {
+      const to = new Date(toVal);
+      to.setHours(23, 59, 59, 999);
+      docs = docs.filter(j => j.completedAt?.toDate?.() <= to);
+    }
+
+    jobReportData = docs;
+
+    if (!docs.length) {
+      el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:12px 0">No completed jobs found for these filters</div>';
+      return;
+    }
+
+    // Calculate totals
+    let grandTotal = 0;
+    const rows = docs.map(job => {
+      const ts = job.completedAt?.toDate?.();
+      const dateStr = ts ? ts.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : '—';
+      const timeStr = ts ? ts.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
+      const {total: jobTotal} = calcJobCost(job);
+      grandTotal += jobTotal;
+
+      return `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:10px 12px;margin-bottom:8px;cursor:pointer" onclick="openJobReport('${job.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${job.address}</div>
+            <div style="font-size:11px;color:#6b8fad;margin-top:2px">${job.engineerName} · ${dateStr} ${timeStr}</div>
+            <div style="font-size:11px;color:#4a6880;margin-top:2px">${(job.items||[]).length} item type(s) · ${(job.items||[]).reduce((s,i)=>s+i.qty,0)} units</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:14px;font-weight:700;color:#4cdf8a">£${jobTotal.toFixed(2)}</div>
+            <div style="font-size:10px;color:#4a6880">best price</div>
+          </div>
+        </div>
+      </div>`;
+    });
+
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 4px 10px;border-bottom:1px solid #1e3248;margin-bottom:10px">
+        <span style="font-size:12px;color:#6b8fad">${docs.length} job${docs.length!==1?'s':''}</span>
+        <span style="font-size:14px;font-weight:700;color:#4cdf8a">Total: £${grandTotal.toFixed(2)}</span>
+      </div>
+      ${rows.join('')}
+      <p style="font-size:10px;color:#4a6880;text-align:center;margin-top:8px">Tap a job to see the full itemised report</p>`;
+
+  } catch(e) {
+    el.innerHTML = `<div style="color:#ff6b6b;font-size:12px;text-align:center;padding:12px 0">Error loading jobs: ${e.message}</div>`;
+  }
+}
+
+function calcJobCost(job) {
+  let total = 0;
+  const lines = (job.items||[]).map(ji => {
+    const item = items.find(i => i.id === ji.id);
+    const sups = item?.suppliers || {};
+    const best = bestPrice(sups);
+    const lineTotal = best ? best * ji.qty : null;
+    if (lineTotal) total += lineTotal;
+    // Find best supplier name
+    let bestSup = null, bestSupPrice = null;
+    Object.entries(sups).forEach(([name, s]) => {
+      if (s && s.price > 0) {
+        if (bestSupPrice === null || Number(s.price) < bestSupPrice) {
+          bestSupPrice = Number(s.price); bestSup = name;
+        }
+      }
+    });
+    return { ...ji, unitPrice: best, lineTotal, bestSupplier: bestSup };
+  });
+  return { lines, total };
+}
+
+let currentJobReportDoc = null;
+
+async function openJobReport(jobId) {
+  const job = jobReportData.find(j => j.id === jobId);
+  if (!job) return;
+  currentJobReportDoc = job;
+
+  const ts = job.completedAt?.toDate?.();
+  const dateStr = ts ? ts.toLocaleDateString('en-GB', {weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+
+  document.getElementById('jobReportModalTitle').textContent = '📋 ' + job.address;
+  document.getElementById('jobReportModalMeta').innerHTML =
+    `<strong>${job.engineerName}</strong> &nbsp;·&nbsp; ${dateStr} &nbsp;·&nbsp; Deducted from ${job.vanLocation || job.engineerName+"'s Van"}`;
+
+  const {lines, total} = calcJobCost(job);
+
+  const tableRows = lines.map(l => `
+    <tr>
+      <td style="padding:7px 8px;border-bottom:1px solid #1e3248;color:#e8edf2;font-size:12px">${l.name}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid #1e3248;color:#6b8fad;font-size:11px;text-align:center">${l.qty}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid #1e3248;color:#6b8fad;font-size:11px;text-align:right">${l.unitPrice != null ? '£'+Number(l.unitPrice).toFixed(2) : '—'}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid #1e3248;font-size:12px;font-weight:600;text-align:right;color:${l.lineTotal != null ? '#4cdf8a' : '#4a6880'}">${l.lineTotal != null ? '£'+l.lineTotal.toFixed(2) : '—'}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid #1e3248;color:#4a6880;font-size:10px">${l.bestSupplier || '—'}</td>
+    </tr>`).join('');
+
+  const unpriced = lines.filter(l => l.unitPrice == null);
+
+  document.getElementById('jobReportModalBody').innerHTML = `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:#1a2840">
+            <th style="padding:7px 8px;text-align:left;font-size:11px;color:#6b8fad;font-weight:600;border-bottom:2px solid #2a4060">Item</th>
+            <th style="padding:7px 8px;text-align:center;font-size:11px;color:#6b8fad;font-weight:600;border-bottom:2px solid #2a4060">Qty</th>
+            <th style="padding:7px 8px;text-align:right;font-size:11px;color:#6b8fad;font-weight:600;border-bottom:2px solid #2a4060">Unit Price</th>
+            <th style="padding:7px 8px;text-align:right;font-size:11px;color:#6b8fad;font-weight:600;border-bottom:2px solid #2a4060">Line Total</th>
+            <th style="padding:7px 8px;text-align:left;font-size:11px;color:#6b8fad;font-weight:600;border-bottom:2px solid #2a4060">Best Supplier</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+        <tfoot>
+          <tr style="background:#1a2840">
+            <td colspan="3" style="padding:8px;font-size:12px;color:#6b8fad;font-weight:600">Total (best prices)</td>
+            <td style="padding:8px;font-size:14px;font-weight:700;color:#4cdf8a;text-align:right">£${total.toFixed(2)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    ${unpriced.length ? `<p style="font-size:11px;color:#f0a020;margin-top:8px">⚠ ${unpriced.length} item(s) have no price set — add prices in Inventory to include them in the total.</p>` : ''}
+    <p style="font-size:10px;color:#4a6880;margin-top:8px">Prices are the lowest unit cost from all configured suppliers at time of report.</p>`;
+
+  document.getElementById('jobReportModal').classList.add('active');
+}
+
+function printJobReport() {
+  if (!currentJobReportDoc) return;
+  const job = currentJobReportDoc;
+  const {lines, total} = calcJobCost(job);
+  const ts = job.completedAt?.toDate?.();
+  const dateStr = ts ? ts.toLocaleDateString('en-GB', {weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+
+  const rows = lines.map(l =>
+    `<tr>
+      <td>${l.name}</td>
+      <td style="text-align:center">${l.qty}</td>
+      <td style="text-align:right">${l.unitPrice != null ? '£'+Number(l.unitPrice).toFixed(2) : '—'}</td>
+      <td style="text-align:right;font-weight:700">${l.lineTotal != null ? '£'+l.lineTotal.toFixed(2) : '—'}</td>
+      <td>${l.bestSupplier || '—'}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><title>Job Report — ${job.address}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #111; padding: 24px; max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    .meta { color: #555; font-size: 12px; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f0f0f0; padding: 7px 8px; text-align: left; border-bottom: 2px solid #ccc; font-size: 11px; }
+    td { padding: 7px 8px; border-bottom: 1px solid #e0e0e0; }
+    tfoot td { font-weight: 700; background: #f8f8f8; font-size: 13px; border-top: 2px solid #ccc; }
+    .total { font-size: 16px; color: #1a6e3a; }
+    .note { font-size: 10px; color: #888; margin-top: 14px; }
+    .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+    .company { font-size: 11px; color: #888; text-align: right; }
+    @media print { body { padding: 0; } }
+  </style></head><body>
+  <div class="header-row">
+    <div><h1>Job Report</h1></div>
+    <div class="company">Rachel's Heat Pump Materials</div>
+  </div>
+  <div class="meta">
+    <strong>${job.address}</strong><br>
+    Engineer: ${job.engineerName} &nbsp;|&nbsp; ${dateStr}<br>
+    Deducted from: ${job.vanLocation || job.engineerName+"'s Van"}
+  </div>
+  <table>
+    <thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Line Total</th><th>Best Supplier</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="3">Total (best prices)</td><td class="total" style="text-align:right">£${total.toFixed(2)}</td><td></td></tr></tfoot>
+  </table>
+  <p class="note">Prices reflect the lowest configured unit cost per item at time of report. Items without a price set are excluded from the total.</p>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+function exportJobReportCSV() {
+  if (!currentJobReportDoc) return;
+  const job = currentJobReportDoc;
+  const {lines, total} = calcJobCost(job);
+  const ts = job.completedAt?.toDate?.();
+  const dateStr = ts ? ts.toLocaleDateString('en-GB') : '';
+
+  let csv = `Job Report\n"Address","${job.address}"\n"Engineer","${job.engineerName}"\n"Date","${dateStr}"\n"Van","${job.vanLocation||''}"\n\n`;
+  csv += `"Item","Qty","Unit Price (£)","Line Total (£)","Best Supplier"\n`;
+  lines.forEach(l => {
+    csv += `"${l.name}",${l.qty},${l.unitPrice != null ? Number(l.unitPrice).toFixed(2) : ''},${l.lineTotal != null ? l.lineTotal.toFixed(2) : ''},"${l.bestSupplier||''}"\n`;
+  });
+  csv += `\n"TOTAL","","","${total.toFixed(2)}",""\n`;
+
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `job-report-${job.address.replace(/[^a-z0-9]/gi,'-').toLowerCase()}-${dateStr.replace(/\//g,'-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 init();
