@@ -1545,7 +1545,8 @@ function openAdd() {
   editId = null;
   document.getElementById('modalTitle').textContent = 'Add Item';
   ['name','mfr','notes'].forEach(k => document.getElementById('f-'+k).value='');
-  document.getElementById('f-cat').value=''; document.getElementById('f-newcat').value='';
+  document.getElementById('f-barcode').value = generateBarcodeValue();
+  document.getElementById('f-newcat').value='';
   populateCatDropdown('');
   document.getElementById('f-min').value='0';
   renderLocationFields({});
@@ -1561,6 +1562,7 @@ function openEdit(id) {
   document.getElementById('f-name').value = item.name||'';
   populateCatDropdown(item.category||'');
   document.getElementById('f-newcat').value = '';
+  document.getElementById('f-barcode').value = item.barcode||'';
   document.getElementById('f-mfr').value  = item.mfr_code||'';
   document.getElementById('f-min').value  = item.min_qty||0;
   document.getElementById('f-notes').value= item.notes||'';
@@ -1606,7 +1608,8 @@ async function saveItem() {
     const v = Math.max(0, parseInt(inp.value)||0);
     if (v > 0) locations[inp.dataset.loc] = v;
   });
-  const payload = { name, category:cat, mfr_code:document.getElementById('f-mfr').value.trim(), locations, min_qty:parseInt(document.getElementById('f-min').value)||0, notes:document.getElementById('f-notes').value.trim(), suppliers:sups };
+  const barcode = document.getElementById('f-barcode').value.trim() || generateBarcodeValue();
+  const payload = { name, category:cat, mfr_code:document.getElementById('f-mfr').value.trim(), barcode, locations, min_qty:parseInt(document.getElementById('f-min').value)||0, notes:document.getElementById('f-notes').value.trim(), suppliers:sups };
   document.getElementById('saveItemBtn').disabled = true;
   setSync('busy');
   try {
@@ -2364,77 +2367,6 @@ function generateBarcodeValue() {
 function generateBarcode() {
   document.getElementById('f-barcode').value = generateBarcodeValue();
 }
-
-// ── openAdd / openEdit barcode wiring ── (append barcode to existing functions)
-const _origOpenAdd = openAdd;
-openAdd = function() {
-  _origOpenAdd();
-  document.getElementById('f-barcode').value = generateBarcodeValue();
-};
-const _origOpenEdit = openEdit;
-openEdit = function(id) {
-  _origOpenEdit(id);
-  const item = items.find(i => i.id === id);
-  document.getElementById('f-barcode').value = item?.barcode || '';
-};
-
-// ── Patch saveItem to include barcode ──
-const _origSaveItem = saveItem;
-saveItem = async function() {
-  // Intercept to inject barcode into payload before saving
-  const barcodeVal = document.getElementById('f-barcode').value.trim();
-  const _origAdd = db.collection('items').add.bind(db.collection('items'));
-  // We patch by temporarily overriding saveItem's db calls via a flag
-  window._pendingBarcode = barcodeVal;
-  await _origSaveItem();
-};
-
-// Patch the Firestore update/add calls inside saveItem to include barcode
-// Simpler approach: override at the payload level by patching saveItem entirely
-// Actually since saveItem is defined inline, let's just patch it cleanly:
-saveItem = async function() {
-  const name = document.getElementById('f-name').value.trim();
-  let cat = document.getElementById('f-cat').value;
-  if (cat==='__new__') cat = document.getElementById('f-newcat').value.trim();
-  if (!name || !cat) { document.getElementById('itemErr').style.display='block'; return; }
-  const sups = {};
-  supEditorData.forEach(s => {
-    if (s.name && Number(s.price)>0) {
-      const cc = cleanCode(s.code), base = SEARCH_URLS[s.name];
-      sups[s.name] = { code:s.code||'', code_display:cc, price:parseFloat(s.price)||0, min_order:s.min_order||'', site:SUPPLIER_SITES[s.name]||'', url:cc&&base?base+encodeURIComponent(cc):'' };
-    }
-  });
-  const locations = {};
-  document.querySelectorAll('.f-loc-input').forEach(inp => {
-    const v = Math.max(0, parseInt(inp.value)||0);
-    if (v > 0) locations[inp.dataset.loc] = v;
-  });
-  const barcode = document.getElementById('f-barcode').value.trim() || generateBarcodeValue();
-  const payload = {
-    name, category:cat,
-    mfr_code: document.getElementById('f-mfr').value.trim(),
-    barcode,
-    locations,
-    min_qty: parseInt(document.getElementById('f-min').value)||0,
-    notes: document.getElementById('f-notes').value.trim(),
-    suppliers: sups
-  };
-  document.getElementById('saveItemBtn').disabled = true;
-  setSync('busy');
-  try {
-    if (editId) {
-      await db.collection('items').doc(editId).update({...payload, qty: firebase.firestore.FieldValue.delete()});
-      await logAction('edit', 'Item edited: '+name, 'By '+currentUser.name);
-    } else {
-      await db.collection('items').add(payload);
-      await logAction('add', 'Item added: '+name+' (barcode: '+barcode+')', 'By '+currentUser.name);
-    }
-    setSync('ok');
-    closeModal('itemModal');
-    toast(editId ? 'Item updated' : 'Item added', 'success');
-  } catch(e) { setSync('err'); toast('Save failed: '+e.message, 'error'); }
-  document.getElementById('saveItemBtn').disabled = false;
-};
 
 // ── Scanner UI ──
 function setScanMode(mode) {
