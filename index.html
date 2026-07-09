@@ -337,27 +337,6 @@ td{padding:8px 9px;vertical-align:middle}
       <div class="search-box"><span style="color:#4a6880;font-size:13px">🔍</span><input type="text" id="search" placeholder="Search items, codes, suppliers..." oninput="filterAndRender()"></div>
       <select class="filter-sel" id="catFilter" onchange="filterAndRender()">
         <option value="">All categories</option>
-        <option value="Buffers/Volumisers/Back Up Heaters">Buffers/Volumisers/Back Up Heaters</option>
-<option value="Clips">Clips</option>
-<option value="Filters">Filters</option>
-<option value="Fittings Compression">Fittings Compression</option>
-<option value="Fittings End Feed">Fittings End Feed</option>
-<option value="Fittings Flat Faced">Fittings Flat Faced</option>
-<option value="Fittings M-Press">Fittings M-Press</option>
-<option value="Fittings MLCP">Fittings MLCP</option>
-<option value="Fittings Wipex">Fittings Wipex</option>
-<option value="Heat Pumps + Accessories">Heat Pumps + Accessories</option>
-<option value="Insulation">Insulation</option>
-<option value="Male/Female Irons">Male/Female Irons</option>
-<option value="Pipe">Pipe</option>
-<option value="Rad Valves">Rad Valves</option>
-<option value="Radiators">Radiators</option>
-<option value="Sealed System Parts">Sealed System Parts</option>
-<option value="Trunking">Trunking</option>
-<option value="UFH">UFH</option>
-<option value="Unvented Cylinders">Unvented Cylinders</option>
-<option value="Valves">Valves</option>
-<option value="Wall Brackets">Wall Brackets</option>
       </select>
       <select class="filter-sel" id="statusFilter" onchange="filterAndRender()">
         <option value="">All stock</option>
@@ -668,27 +647,6 @@ td{padding:8px 9px;vertical-align:middle}
         <label>Category *</label>
         <select id="f-cat" onchange="toggleNewCat()">
           <option value="">Select...</option>
-          <option value="Buffers/Volumisers/Back Up Heaters">Buffers/Volumisers/Back Up Heaters</option>
-<option value="Clips">Clips</option>
-<option value="Filters">Filters</option>
-<option value="Fittings Compression">Fittings Compression</option>
-<option value="Fittings End Feed">Fittings End Feed</option>
-<option value="Fittings Flat Faced">Fittings Flat Faced</option>
-<option value="Fittings M-Press">Fittings M-Press</option>
-<option value="Fittings MLCP">Fittings MLCP</option>
-<option value="Fittings Wipex">Fittings Wipex</option>
-<option value="Heat Pumps + Accessories">Heat Pumps + Accessories</option>
-<option value="Insulation">Insulation</option>
-<option value="Male/Female Irons">Male/Female Irons</option>
-<option value="Pipe">Pipe</option>
-<option value="Rad Valves">Rad Valves</option>
-<option value="Radiators">Radiators</option>
-<option value="Sealed System Parts">Sealed System Parts</option>
-<option value="Trunking">Trunking</option>
-<option value="UFH">UFH</option>
-<option value="Unvented Cylinders">Unvented Cylinders</option>
-<option value="Valves">Valves</option>
-<option value="Wall Brackets">Wall Brackets</option>
           <option value="__new__">+ New category...</option>
         </select>
       </div>
@@ -1172,13 +1130,24 @@ function logout() {
 async function loadItemsOnce() {
   const snap = await db.collection('items').orderBy('name').get();
   items = snap.docs.map(d => ({...d.data(), id: d.id}));
+  refreshCatFilter();
   renderTable();
+}
+
+function refreshCatFilter() {
+  const sel = document.getElementById('catFilter');
+  if (!sel) return;
+  const current = sel.value;
+  const cats = [...new Set(items.map(i => i.category).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All categories</option>' +
+    cats.map(c => `<option value="${c}"${c===current?' selected':''}>${c}</option>`).join('');
 }
 
 function subscribeToItems() {
   if (unsubItems) unsubItems();
   unsubItems = db.collection('items').orderBy('name').onSnapshot(snap => {
     items = snap.docs.map(d => ({...d.data(), id: d.id}));
+    refreshCatFilter();
     setSync('ok');
     renderStats();
     renderTableBody();
@@ -1550,6 +1519,17 @@ async function confirmAdjust() {
 // ════════════════════════════════════════
 //  ADD / EDIT ITEMS
 // ════════════════════════════════════════
+function populateCatDropdown(selectedCat) {
+  const cats = [...new Set(items.map(i => i.category).filter(Boolean))].sort();
+  const sel = document.getElementById('f-cat');
+  sel.innerHTML = '<option value="">Select...</option>' +
+    cats.map(c => `<option value="${c}"${c===selectedCat?' selected':''}>${c}</option>`).join('') +
+    '<option value="__new__">+ New category...</option>';
+  if (selectedCat && !cats.includes(selectedCat)) {
+    // Category exists on item but not yet in list — add it
+    sel.innerHTML = `<option value="${selectedCat}" selected>${selectedCat}</option>` + sel.innerHTML;
+  }
+}
 function toggleNewCat() {
   const v = document.getElementById('f-cat').value;
   document.getElementById('newCatField').style.display = v==='__new__' ? 'block' : 'none';
@@ -1566,6 +1546,7 @@ function openAdd() {
   document.getElementById('modalTitle').textContent = 'Add Item';
   ['name','mfr','notes'].forEach(k => document.getElementById('f-'+k).value='');
   document.getElementById('f-cat').value=''; document.getElementById('f-newcat').value='';
+  populateCatDropdown('');
   document.getElementById('f-min').value='0';
   renderLocationFields({});
   document.getElementById('newCatField').style.display='none';
@@ -1578,7 +1559,7 @@ function openEdit(id) {
   const item = items.find(i => i.id===id); editId=id;
   document.getElementById('modalTitle').textContent = 'Edit Item';
   document.getElementById('f-name').value = item.name||'';
-  document.getElementById('f-cat').value  = item.category||'';
+  populateCatDropdown(item.category||'');
   document.getElementById('f-newcat').value = '';
   document.getElementById('f-mfr').value  = item.mfr_code||'';
   document.getElementById('f-min').value  = item.min_qty||0;
