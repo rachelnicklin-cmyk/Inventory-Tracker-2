@@ -320,9 +320,9 @@ td{padding:8px 9px;vertical-align:middle}
     <div class="tab-bar" id="tabBar">
       <button class="tab-btn active" onclick="showPage('inventory')">Inventory</button>
       <button class="tab-btn" onclick="showPage('scan')">📷 Scan</button>
-      <button class="tab-btn" onclick="showPage('invoice')">Invoice</button>
-      <button class="tab-btn" onclick="showPage('job')">🔧 Job</button>
+      <button class="tab-btn" onclick="showPage('job')" style="color:#22c55e;font-weight:600">🔧 Job</button>
       <button class="tab-btn" onclick="showPage('stocktake')">Stock Take</button>
+      <button class="tab-btn" onclick="showPage('invoice')">Invoice</button>
       <button class="tab-btn" onclick="showPage('log')">Log</button>
       <button class="tab-btn admin-only" onclick="showPage('admin')" style="display:none">Admin</button>
     </div>
@@ -1153,6 +1153,8 @@ async function loginAs(u) {
   subscribeToItems();
   toast('Welcome, ' + u.name + '!', 'success');
   checkStockTakeDue();
+  // Engineers land on Job tab by default
+  if (!isAdmin) showPage('job');
 }
 function logout() {
   if (unsubItems) { unsubItems(); unsubItems = null; }
