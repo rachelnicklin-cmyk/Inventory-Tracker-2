@@ -587,7 +587,7 @@ td{padding:8px 9px;vertical-align:middle}
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <h2 style="font-size:15px;font-weight:700;color:#e8edf2">🚚 Deliveries &amp; Collections</h2>
-        <button id="newOrderBtn" class="btn btn-primary" style="padding:6px 12px;font-size:12px;display:none" onclick="openNewDelivery()">+ New Order</button>
+        <button id="newOrderBtn" class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="openNewDelivery()">+ New Order</button>
       </div>
 
       <!-- Pending -->
@@ -1141,7 +1141,7 @@ async function init() {
       storageBucket: cfg.projectId + '.appspot.com',
     });
     db = firebase.firestore();
-    storage = firebase.storage();
+    storage = typeof firebase.storage === 'function' ? firebase.storage() : null;
     setLoading('Checking database...');
     // Seed default users if none exist
     await ensureUsersSeeded();
@@ -3466,19 +3466,40 @@ function deliveryCard(id, d, confirmed) {
 
 // ── New Delivery ──
 function openNewDelivery() {
-  deliveryItemRowData = [];
-  ['del-supplier','del-customer-address','del-delivery-address','del-notes'].forEach(id => {
-    const el = document.getElementById(id); if(el) el.value='';
-  });
-  document.getElementById('del-type').value = 'collection';
-  document.getElementById('del-date').value = '';
-  // populate engineer dropdown
-  const sel = document.getElementById('del-engineer');
-  sel.innerHTML = '<option value="">Any engineer</option>' +
-    users.map(u=>`<option value="${u.name}">${u.name}</option>`).join('');
-  document.getElementById('deliveryErr').style.display = 'none';
-  renderDeliveryItemRows();
-  document.getElementById('newDeliveryModal').classList.add('open');
+  try {
+    deliveryItemRowData = [];
+
+    const fields = ['del-supplier','del-customer-address','del-delivery-address','del-notes'];
+    fields.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+
+    const typeEl = document.getElementById('del-type');
+    if (typeEl) typeEl.value = 'collection';
+
+    const dateEl = document.getElementById('del-date');
+    if (dateEl) dateEl.value = '';
+
+    const sel = document.getElementById('del-engineer');
+    if (sel) {
+      sel.innerHTML = '<option value="">Any engineer</option>' +
+        users.map(u => `<option value="${u.name}">${u.name}</option>`).join('');
+    }
+
+    const errEl = document.getElementById('deliveryErr');
+    if (errEl) errEl.style.display = 'none';
+
+    renderDeliveryItemRows();
+
+    const modal = document.getElementById('newDeliveryModal');
+    if (!modal) { toast('Modal not found — please reload', 'error'); return; }
+    modal.classList.add('open');
+
+  } catch(e) {
+    toast('Error opening form: ' + e.message, 'error');
+    console.error('openNewDelivery error:', e);
+  }
 }
 
 function addDeliveryItemRow() {
