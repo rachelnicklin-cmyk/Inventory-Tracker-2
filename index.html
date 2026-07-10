@@ -3161,7 +3161,7 @@ let jobReportData = []; // cached for export
 function populateJobReportEngineers() {
   const sel = document.getElementById('jobReportEngineer');
   if (!sel) return;
-  const engineers = [...new Set(loginUsers.map(u => u.name))];
+  const engineers = [...new Set(users.map(u => u.name))];
   sel.innerHTML = '<option value="">All Engineers</option>' +
     engineers.map(n => `<option value="${n}">${n}</option>`).join('');
 }
@@ -3475,7 +3475,7 @@ function openNewDelivery() {
   // populate engineer dropdown
   const sel = document.getElementById('del-engineer');
   sel.innerHTML = '<option value="">Any engineer</option>' +
-    loginUsers.map(u=>`<option value="${u.name}">${u.name}</option>`).join('');
+    users.map(u=>`<option value="${u.name}">${u.name}</option>`).join('');
   document.getElementById('deliveryErr').style.display = 'none';
   renderDeliveryItemRows();
   document.getElementById('newDeliveryModal').classList.add('open');
@@ -3565,7 +3565,7 @@ async function editDelivery(id) {
     document.getElementById('del-date').value = d.expectedDate||'';
     const sel = document.getElementById('del-engineer');
     sel.innerHTML = '<option value="">Any engineer</option>' +
-      loginUsers.map(u=>`<option value="${u.name}"${u.name===d.assignedTo?' selected':''}>${u.name}</option>`).join('');
+      users.map(u=>`<option value="${u.name}"${u.name===d.assignedTo?' selected':''}>${u.name}</option>`).join('');
     renderDeliveryItemRows();
     document.getElementById('deliveryErr').style.display='none';
     // Swap save button to update
@@ -3630,7 +3630,7 @@ async function openConfirmCollection(id) {
 
     // Collected-by dropdown
     const engSel = document.getElementById('confirmColEngineer');
-    engSel.innerHTML = loginUsers.map(u=>`<option value="${u.name}">${u.name}</option>`).join('');
+    engSel.innerHTML = users.map(u=>`<option value="${u.name}">${u.name}</option>`).join('');
     if (currentUser) engSel.value = currentUser.name;
 
     document.getElementById('confirmColErr').style.display = 'none';
