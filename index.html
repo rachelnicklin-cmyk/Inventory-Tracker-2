@@ -321,6 +321,7 @@ td{padding:8px 9px;vertical-align:middle}
       <button class="tab-btn active" onclick="showPage('inventory')">Inventory</button>
       <button class="tab-btn" onclick="showPage('scan')">📷 Scan</button>
       <button class="tab-btn" onclick="showPage('job')" style="color:#22c55e;font-weight:600">🔧 Job</button>
+      <button class="tab-btn" onclick="showPage('deliveries')">🚚 Deliveries</button>
       <button class="tab-btn" onclick="showPage('stocktake')">Stock Take</button>
       <button class="tab-btn" onclick="showPage('invoice')">Invoice</button>
       <button class="tab-btn" onclick="showPage('log')">Log</button>
@@ -579,6 +580,26 @@ td{padding:8px 9px;vertical-align:middle}
     </div>
   </div>
 
+  <!-- DELIVERIES / COLLECTIONS -->
+  <div class="page" id="page-deliveries">
+    <div style="padding:14px">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <h2 style="font-size:15px;font-weight:700;color:#e8edf2">🚚 Deliveries &amp; Collections</h2>
+        <button class="btn btn-primary admin-only" style="padding:6px 12px;font-size:12px;display:none" onclick="openNewDelivery()">+ New Order</button>
+      </div>
+
+      <!-- Pending -->
+      <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Awaiting Collection</div>
+      <div id="deliveryPendingList"><div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No pending collections</div></div>
+
+      <!-- Confirmed -->
+      <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin:16px 0 8px">Recently Confirmed</div>
+      <div id="deliveryConfirmedList"><div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No confirmed orders yet</div></div>
+
+    </div>
+  </div>
+
   <!-- ADMIN -->
   <div class="page" id="page-admin">
     <div style="padding:14px">
@@ -633,6 +654,105 @@ td{padding:8px 9px;vertical-align:middle}
       <button class="btn btn-primary" style="padding:8px 14px;font-size:12px" onclick="printJobReport()">🖨 Print / Save PDF</button>
       <button class="btn btn-outline" style="padding:8px 14px;font-size:12px" onclick="exportJobReportCSV()">↓ Export CSV</button>
       <button class="btn btn-outline" style="padding:8px 14px;font-size:12px" onclick="closeModal('jobReportModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Delivery Modal (admin only) -->
+<div class="overlay" id="newDeliveryModal" onclick="if(event.target===this)closeModal('newDeliveryModal')">
+  <div class="modal" style="max-width:520px;max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:14px">🚚 New Projected Order</h2>
+
+    <div class="form-row">
+      <div class="field">
+        <label>Order Type</label>
+        <select id="del-type" style="width:100%;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+          <option value="collection">Collection (engineer picks up)</option>
+          <option value="delivery">Delivery (comes to site)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Supplier</label>
+        <input type="text" id="del-supplier" placeholder="e.g. Wolseley" style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+      </div>
+    </div>
+
+    <div class="field" style="margin-bottom:10px">
+      <label>Customer / Job Address</label>
+      <input type="text" id="del-customer-address" placeholder="e.g. 14 Oak Street, Manchester" style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+    </div>
+
+    <div class="field" style="margin-bottom:10px">
+      <label>Collection / Delivery Address <span style="font-size:10px;color:#4a6880">(where engineer goes to collect, or where delivery arrives)</span></label>
+      <input type="text" id="del-delivery-address" placeholder="e.g. Wolseley Branch, Salford" style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+    </div>
+
+    <div class="field" style="margin-bottom:10px">
+      <label>Assign To</label>
+      <select id="del-engineer" style="width:100%;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+        <option value="">Any engineer</option>
+      </select>
+    </div>
+
+    <div class="field" style="margin-bottom:10px">
+      <label>Expected Date <span style="font-size:10px;color:#4a6880">(optional)</span></label>
+      <input type="date" id="del-date" style="padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+    </div>
+
+    <div class="field" style="margin-bottom:10px">
+      <label>Notes <span style="font-size:10px;color:#4a6880">(optional)</span></label>
+      <input type="text" id="del-notes" placeholder="e.g. Call ahead, collect by noon" style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px">Items to Order</div>
+      <button class="btn btn-outline" style="padding:4px 9px;font-size:11px" onclick="addDeliveryItemRow()">+ Add Item</button>
+    </div>
+    <div style="font-size:11px;color:#4a6880;display:grid;grid-template-columns:1fr 80px 28px;gap:4px;margin-bottom:4px;padding:0 2px">
+      <span>Item</span><span style="text-align:center">Qty</span><span></span>
+    </div>
+    <div id="deliveryItemRows"></div>
+    <p id="deliveryErr" style="display:none;color:#ff6b6b;font-size:11px;margin-top:6px">Please add at least one item and fill in the customer address.</p>
+
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-primary" style="flex:1;padding:10px;font-size:13px" onclick="saveDelivery()">Create Order</button>
+      <button class="btn btn-outline" style="padding:10px 14px;font-size:13px" onclick="closeModal('newDeliveryModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Collection Modal -->
+<div class="overlay" id="confirmCollectionModal" onclick="if(event.target===this)closeModal('confirmCollectionModal')">
+  <div class="modal" style="max-width:520px;max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:4px">✅ Confirm Collection</h2>
+    <div id="confirmColMeta" style="font-size:11px;color:#6b8fad;margin-bottom:14px"></div>
+
+    <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Items — select where to allocate each one</div>
+    <div id="confirmColItems"></div>
+
+    <div style="background:#1a2840;border:1px solid #2a5080;border-radius:7px;padding:10px 12px;margin:12px 0">
+      <div style="font-size:11px;color:#6b8fad;margin-bottom:6px">Collected by</div>
+      <select id="confirmColEngineer" style="width:100%;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none"></select>
+    </div>
+
+    <p id="confirmColErr" style="display:none;color:#ff6b6b;font-size:11px;margin-bottom:8px">Please select a location for every item.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1;padding:10px;font-size:13px;background:linear-gradient(135deg,#1a8a4a,#147a3e)" onclick="confirmCollection()">✅ Confirm &amp; Add to Stock</button>
+      <button class="btn btn-outline" style="padding:10px 14px" onclick="closeModal('confirmCollectionModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Job Leftover Allocation Modal -->
+<div class="overlay" id="jobLeftoverModal" onclick="if(event.target===this)closeModal('jobLeftoverModal')">
+  <div class="modal" style="max-width:520px;max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:4px">📦 Allocate Leftover Stock</h2>
+    <p style="font-size:12px;color:#6b8fad;margin-bottom:14px">Job complete! For any items you have leftover stock from, select where it should go. Leave blank to skip.</p>
+    <div id="jobLeftoverItems"></div>
+    <p id="jobLeftoverErr" style="display:none;color:#ff6b6b;font-size:11px;margin-bottom:8px">Please fill in all quantities or set to 0.</p>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-primary" style="flex:1;padding:10px;font-size:13px" onclick="submitJobLeftover()">Save &amp; Finish</button>
+      <button class="btn btn-outline" style="padding:10px;font-size:12px" onclick="closeModal('jobLeftoverModal');resetJobState()">Skip — no leftovers</button>
     </div>
   </div>
 </div>
@@ -1249,6 +1369,7 @@ function showPage(name) {
   if (name !== 'scan') stopScanner();
   if (name !== 'job') stopJobScanner();
   if (name === 'job') renderJobPage();
+  if (name === 'deliveries') renderDeliveriesPage();
 }
 
 // ════════════════════════════════════════
@@ -2659,8 +2780,6 @@ async function printSelectedLabels() {
   win.document.close();
 }
 
-init();
-
 // ════════════════════════════════════════
 //  JOB MODE
 // ════════════════════════════════════════
@@ -2959,21 +3078,12 @@ async function completeJob() {
       toast(`Job completed with ${errors.length} issue(s) — check log`, 'error');
       console.warn('Job errors:', errors);
     } else {
-      toast('Job completed! Stock deducted.', 'success');
+      toast('Job complete! Now allocate any leftover stock.', 'success');
     }
 
-    // Reset state
-    jobActive = false;
-    jobDraftId = null;
-    jobAddress = '';
-    jobItems = [];
-    document.getElementById('jobSetupSection').style.display = 'block';
-    document.getElementById('jobActiveSection').style.display = 'none';
-    document.getElementById('jobHistorySection').style.display = 'block';
-    document.getElementById('jobAddressInput').value = '';
-    await reloadData();
-    loadJobHistory();
-    loadJobDraft();
+    // Open leftover allocation modal before fully resetting
+    stopJobScanner();
+    openJobLeftoverModal(jobItems, jobAddress, jobDraftId);
 
   } catch(e) {
     setSync('err');
@@ -3245,6 +3355,373 @@ function exportJobReportCSV() {
   a.download = `job-report-${job.address.replace(/[^a-z0-9]/gi,'-').toLowerCase()}-${dateStr.replace(/\//g,'-')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════
+//  DELIVERIES & COLLECTIONS
+// ════════════════════════════════════════
+let deliveryItemRowData = []; // [{itemId, name, qty}]
+let currentConfirmDeliveryId = null;
+let pendingJobCompletionData = null; // holds job data while leftover modal is open
+
+// ── Page render ──
+async function renderDeliveriesPage() {
+  await Promise.all([renderPendingDeliveries(), renderConfirmedDeliveries()]);
+  // Show/hide New Order button for admins
+  document.querySelectorAll('.admin-only').forEach(el => {
+    if (currentUser?.role === 'admin') el.style.display = '';
+  });
+}
+
+async function renderPendingDeliveries() {
+  const el = document.getElementById('deliveryPendingList');
+  if (!el) return;
+  try {
+    const snap = await db.collection('deliveries').where('status','==','pending')
+      .orderBy('createdAt','desc').limit(50).get();
+    if (snap.empty) { el.innerHTML='<div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No pending collections</div>'; return; }
+    el.innerHTML = snap.docs.map(d => deliveryCard(d.id, d.data(), false)).join('');
+  } catch(e) { el.innerHTML='<div style="color:#ff6b6b;font-size:12px;text-align:center;padding:12px">Error loading deliveries</div>'; }
+}
+
+async function renderConfirmedDeliveries() {
+  const el = document.getElementById('deliveryConfirmedList');
+  if (!el) return;
+  try {
+    const snap = await db.collection('deliveries').where('status','==','confirmed')
+      .orderBy('confirmedAt','desc').limit(20).get();
+    if (snap.empty) { el.innerHTML='<div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No confirmed orders yet</div>'; return; }
+    el.innerHTML = snap.docs.map(d => deliveryCard(d.id, d.data(), true)).join('');
+  } catch(e) { el.innerHTML='<div style="color:#ff6b6b;font-size:12px;text-align:center;padding:12px">Error loading history</div>'; }
+}
+
+function deliveryCard(id, d, confirmed) {
+  const typeLabel = d.type === 'delivery' ? '📦 Delivery' : '🏪 Collection';
+  const dateStr = d.expectedDate ? `Expected: ${new Date(d.expectedDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}` : '';
+  const confirmedStr = d.confirmedAt?.toDate ? d.confirmedAt.toDate().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  const itemSummary = (d.items||[]).map(i=>`${i.name} ×${i.qty}`).join(' · ');
+  const borderCol = confirmed ? '#1a3a1a' : '#2a4060';
+  const badge = confirmed
+    ? `<span style="font-size:10px;background:#0f2e1a;color:#4cdf8a;padding:2px 7px;border-radius:8px;font-weight:600">✓ Confirmed</span>`
+    : `<span style="font-size:10px;background:#1a2840;color:#3a7bd5;padding:2px 7px;border-radius:8px;font-weight:600">⏳ Pending</span>`;
+  return `<div style="background:#0f1e30;border:1px solid ${borderCol};border-radius:8px;padding:11px 13px;margin-bottom:9px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.customerAddress||'No address'}</div>
+        <div style="font-size:11px;color:#6b8fad;margin-top:2px">${typeLabel}${d.supplier?' · '+d.supplier:''}</div>
+      </div>
+      ${badge}
+    </div>
+    ${d.deliveryAddress?`<div style="font-size:11px;color:#4cdf8a;margin-bottom:4px">📍 ${d.deliveryAddress}</div>`:''}
+    ${dateStr?`<div style="font-size:11px;color:#f0a020;margin-bottom:4px">📅 ${dateStr}</div>`:''}
+    ${d.assignedTo?`<div style="font-size:11px;color:#6b8fad;margin-bottom:4px">👤 ${d.assignedTo}</div>`:''}
+    <div style="font-size:11px;color:#4a6880;margin-bottom:${confirmed?4:8}px">${itemSummary}</div>
+    ${d.notes?`<div style="font-size:11px;color:#4a6880;font-style:italic;margin-bottom:8px">${d.notes}</div>`:''}
+    ${confirmed
+      ? `<div style="font-size:10px;color:#4a6880">Confirmed by ${d.confirmedBy||'?'} · ${confirmedStr}</div>`
+      : `<div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-primary" style="padding:7px 14px;font-size:12px;background:linear-gradient(135deg,#1a8a4a,#147a3e)" onclick="openConfirmCollection('${id}')">✅ Confirm Collection</button>
+          <button class="btn admin-only btn-outline" style="padding:7px 10px;font-size:11px;display:${currentUser?.role==='admin'?'':'none'}" onclick="editDelivery('${id}')">✏ Edit</button>
+          <button class="btn admin-only btn-warn" style="padding:7px 10px;font-size:11px;display:${currentUser?.role==='admin'?'':'none'}" onclick="cancelDelivery('${id}')">✕ Cancel</button>
+        </div>`}
+  </div>`;
+}
+
+// ── New Delivery ──
+function openNewDelivery() {
+  deliveryItemRowData = [];
+  ['del-supplier','del-customer-address','del-delivery-address','del-notes'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('del-type').value = 'collection';
+  document.getElementById('del-date').value = '';
+  // populate engineer dropdown
+  const sel = document.getElementById('del-engineer');
+  sel.innerHTML = '<option value="">Any engineer</option>' +
+    loginUsers.map(u=>`<option value="${u.name}">${u.name}</option>`).join('');
+  document.getElementById('deliveryErr').style.display = 'none';
+  renderDeliveryItemRows();
+  document.getElementById('newDeliveryModal').classList.add('open');
+}
+
+function addDeliveryItemRow() {
+  deliveryItemRowData.push({itemId:'', name:'', qty:1});
+  renderDeliveryItemRows();
+}
+
+function renderDeliveryItemRows() {
+  const el = document.getElementById('deliveryItemRows');
+  if (!deliveryItemRowData.length) {
+    el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:12px 0">No items yet — tap + Add Item</div>';
+    return;
+  }
+  el.innerHTML = deliveryItemRowData.map((row, i) => `
+    <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:4px;margin-bottom:6px;align-items:center">
+      <select onchange="delItemSelect(${i},this.value)" style="padding:7px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+        <option value="">Select item...</option>
+        ${items.map(it=>`<option value="${it.id}"${it.id===row.itemId?' selected':''}>${it.name}</option>`).join('')}
+      </select>
+      <input type="number" min="1" value="${row.qty}" oninput="deliveryItemRowData[${i}].qty=Math.max(1,parseInt(this.value)||1)"
+        style="padding:7px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none;text-align:center">
+      <button onclick="deliveryItemRowData.splice(${i},1);renderDeliveryItemRows()" style="background:#3a1010;border:none;color:#ff6b6b;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:12px">✕</button>
+    </div>`).join('');
+}
+
+function delItemSelect(i, itemId) {
+  const item = items.find(it=>it.id===itemId);
+  deliveryItemRowData[i].itemId = itemId;
+  deliveryItemRowData[i].name = item?.name||'';
+}
+
+async function saveDelivery() {
+  const customerAddress = document.getElementById('del-customer-address').value.trim();
+  const validItems = deliveryItemRowData.filter(r=>r.itemId&&r.qty>0);
+  if (!customerAddress || !validItems.length) {
+    document.getElementById('deliveryErr').style.display = 'block'; return;
+  }
+  document.getElementById('deliveryErr').style.display = 'none';
+  const payload = {
+    type: document.getElementById('del-type').value,
+    supplier: document.getElementById('del-supplier').value.trim(),
+    customerAddress,
+    deliveryAddress: document.getElementById('del-delivery-address').value.trim(),
+    assignedTo: document.getElementById('del-engineer').value,
+    expectedDate: document.getElementById('del-date').value || null,
+    notes: document.getElementById('del-notes').value.trim(),
+    items: validItems.map(r=>({itemId:r.itemId, name:r.name, qty:Number(r.qty)})),
+    status: 'pending',
+    createdBy: currentUser.name,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  try {
+    setSync('busy');
+    await db.collection('deliveries').add(payload);
+    await logAction('delivery', `Order created: ${customerAddress}`, `${validItems.length} item(s) · ${payload.type} · by ${currentUser.name}`);
+    setSync('ok');
+    closeModal('newDeliveryModal');
+    toast('Order created', 'success');
+    renderDeliveriesPage();
+  } catch(e) { setSync('err'); toast('Save failed: '+e.message,'error'); }
+}
+
+async function cancelDelivery(id) {
+  if (!confirm('Cancel this order?')) return;
+  try {
+    await db.collection('deliveries').doc(id).update({status:'cancelled', cancelledAt: firebase.firestore.FieldValue.serverTimestamp()});
+    await logAction('delivery','Order cancelled','By '+currentUser.name);
+    toast('Order cancelled','info');
+    renderDeliveriesPage();
+  } catch(e) { toast('Error: '+e.message,'error'); }
+}
+
+async function editDelivery(id) {
+  // Load doc and re-open modal pre-filled
+  try {
+    const doc = await db.collection('deliveries').doc(id).get();
+    const d = doc.data();
+    deliveryItemRowData = (d.items||[]).map(i=>({itemId:i.itemId, name:i.name, qty:i.qty}));
+    document.getElementById('del-type').value = d.type||'collection';
+    document.getElementById('del-supplier').value = d.supplier||'';
+    document.getElementById('del-customer-address').value = d.customerAddress||'';
+    document.getElementById('del-delivery-address').value = d.deliveryAddress||'';
+    document.getElementById('del-notes').value = d.notes||'';
+    document.getElementById('del-date').value = d.expectedDate||'';
+    const sel = document.getElementById('del-engineer');
+    sel.innerHTML = '<option value="">Any engineer</option>' +
+      loginUsers.map(u=>`<option value="${u.name}"${u.name===d.assignedTo?' selected':''}>${u.name}</option>`).join('');
+    renderDeliveryItemRows();
+    document.getElementById('deliveryErr').style.display='none';
+    // Swap save button to update
+    const btn = document.querySelector('#newDeliveryModal .btn-primary');
+    btn.textContent = 'Update Order';
+    btn.onclick = async () => {
+      const customerAddress = document.getElementById('del-customer-address').value.trim();
+      const validItems = deliveryItemRowData.filter(r=>r.itemId&&r.qty>0);
+      if (!customerAddress||!validItems.length){document.getElementById('deliveryErr').style.display='block';return;}
+      try {
+        setSync('busy');
+        await db.collection('deliveries').doc(id).update({
+          type:document.getElementById('del-type').value,
+          supplier:document.getElementById('del-supplier').value.trim(),
+          customerAddress,
+          deliveryAddress:document.getElementById('del-delivery-address').value.trim(),
+          assignedTo:document.getElementById('del-engineer').value,
+          expectedDate:document.getElementById('del-date').value||null,
+          notes:document.getElementById('del-notes').value.trim(),
+          items:validItems.map(r=>({itemId:r.itemId,name:r.name,qty:Number(r.qty)})),
+          updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+        });
+        setSync('ok'); closeModal('newDeliveryModal'); toast('Order updated','success'); renderDeliveriesPage();
+        btn.textContent='Create Order'; btn.onclick=saveDelivery;
+      } catch(e){setSync('err');toast('Update failed: '+e.message,'error');}
+    };
+    document.getElementById('newDeliveryModal').classList.add('open');
+  } catch(e){toast('Load failed: '+e.message,'error');}
+}
+
+// ── Confirm Collection ──
+async function openConfirmCollection(id) {
+  try {
+    const doc = await db.collection('deliveries').doc(id).get();
+    const d = doc.data();
+    currentConfirmDeliveryId = id;
+
+    const meta = document.getElementById('confirmColMeta');
+    meta.innerHTML = `<strong>${d.customerAddress}</strong>${d.supplier?' · '+d.supplier:''}<br>${d.deliveryAddress?'📍 '+d.deliveryAddress+'<br>':''}${d.notes||''}`;
+
+    // Build per-item location selectors
+    const itemsEl = document.getElementById('confirmColItems');
+    itemsEl.innerHTML = (d.items||[]).map((it,i) => `
+      <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 11px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#e8edf2">${it.name}</div>
+            <div style="font-size:11px;color:#4a6880">Qty: ${it.qty}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:#6b8fad">Add to:</span>
+            <select id="col-loc-${i}" style="padding:6px 8px;background:#1a2840;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+              <option value="">Select location...</option>
+              ${LOCATIONS.map(l=>`<option value="${l}">${l}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>`).join('');
+
+    // Collected-by dropdown
+    const engSel = document.getElementById('confirmColEngineer');
+    engSel.innerHTML = loginUsers.map(u=>`<option value="${u.name}">${u.name}</option>`).join('');
+    if (currentUser) engSel.value = currentUser.name;
+
+    document.getElementById('confirmColErr').style.display = 'none';
+    document.getElementById('confirmCollectionModal').classList.add('open');
+  } catch(e) { toast('Could not load order: '+e.message,'error'); }
+}
+
+async function confirmCollection() {
+  const doc = await db.collection('deliveries').doc(currentConfirmDeliveryId).get();
+  const d = doc.data();
+  const collectedBy = document.getElementById('confirmColEngineer').value;
+
+  // Validate all locations chosen
+  const assignments = (d.items||[]).map((it,i) => ({
+    ...it, location: document.getElementById('col-loc-'+i)?.value
+  }));
+  if (assignments.some(a=>!a.location)) {
+    document.getElementById('confirmColErr').style.display='block'; return;
+  }
+  document.getElementById('confirmColErr').style.display='none';
+
+  try {
+    setSync('busy');
+    // Add stock to each location
+    for (const a of assignments) {
+      const item = items.find(i=>i.id===a.itemId);
+      if (!item) continue;
+      const locs = {...getLocations(item)};
+      locs[a.location] = (locs[a.location]||0) + Number(a.qty);
+      await db.collection('items').doc(a.itemId).update({locations: locs});
+    }
+    // Mark delivery confirmed
+    await db.collection('deliveries').doc(currentConfirmDeliveryId).update({
+      status: 'confirmed',
+      confirmedBy: collectedBy,
+      confirmedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await logAction('delivery',
+      `Collection confirmed: ${d.customerAddress}`,
+      `${collectedBy} confirmed ${assignments.length} item(s) — ${assignments.map(a=>a.name+' ×'+a.qty+' → '+a.location).join(', ')}`
+    );
+    setSync('ok');
+    closeModal('confirmCollectionModal');
+    toast('Collection confirmed! Stock added.','success');
+    await reloadData();
+    renderDeliveriesPage();
+  } catch(e) { setSync('err'); toast('Error: '+e.message,'error'); }
+}
+
+// ════════════════════════════════════════
+//  JOB LEFTOVER STOCK MODAL
+// ════════════════════════════════════════
+function openJobLeftoverModal(jobItems, jobAddress, jobDraftId) {
+  pendingJobCompletionData = {jobItems, jobAddress, jobDraftId};
+
+  const el = document.getElementById('jobLeftoverItems');
+  el.innerHTML = jobItems.map((ji,i) => {
+    const item = items.find(it=>it.id===ji.id);
+    return `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 11px;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:600;color:#e8edf2;margin-bottom:6px">${ji.name}</div>
+      <div style="font-size:11px;color:#4a6880;margin-bottom:8px">Used: ${ji.qty} — any leftover to return?</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:11px;color:#6b8fad">Qty:</span>
+          <input type="number" min="0" value="0" id="leftover-qty-${i}"
+            style="width:60px;padding:5px;background:#1a2840;border:1px solid #2a4060;border-radius:5px;color:#e8edf2;font-size:12px;outline:none;text-align:center">
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:11px;color:#6b8fad">To:</span>
+          <select id="leftover-loc-${i}" style="padding:6px 8px;background:#1a2840;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+            <option value="">Select location...</option>
+            ${LOCATIONS.map(l=>`<option value="${l}">${l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('jobLeftoverErr').style.display='none';
+  document.getElementById('jobLeftoverModal').classList.add('open');
+}
+
+async function submitJobLeftover() {
+  const {jobItems, jobAddress, jobDraftId} = pendingJobCompletionData;
+  const returns = [];
+
+  for (let i=0; i<jobItems.length; i++) {
+    const qty = parseInt(document.getElementById('leftover-qty-'+i)?.value)||0;
+    const loc = document.getElementById('leftover-loc-'+i)?.value;
+    if (qty > 0 && !loc) {
+      document.getElementById('jobLeftoverErr').style.display='block'; return;
+    }
+    if (qty > 0 && loc) returns.push({...jobItems[i], returnQty:qty, returnLoc:loc});
+  }
+  document.getElementById('jobLeftoverErr').style.display='none';
+
+  if (returns.length) {
+    try {
+      setSync('busy');
+      for (const r of returns) {
+        const item = items.find(it=>it.id===r.id);
+        if (!item) continue;
+        const locs = {...getLocations(item)};
+        locs[r.returnLoc] = (locs[r.returnLoc]||0) + r.returnQty;
+        await db.collection('items').doc(r.id).update({locations: locs});
+      }
+      await logAction('job', `Leftover stock returned: ${jobAddress}`,
+        returns.map(r=>`${r.name} ×${r.returnQty} → ${r.returnLoc}`).join(', '));
+      setSync('ok');
+    } catch(e) { setSync('err'); toast('Error saving returns: '+e.message,'error'); return; }
+  }
+
+  closeModal('jobLeftoverModal');
+  resetJobState();
+  await reloadData();
+  toast('Job complete!','success');
+}
+
+function resetJobState() {
+  jobActive = false; jobDraftId = null; jobAddress = ''; jobItems = [];
+  pendingJobCompletionData = null;
+  const setup = document.getElementById('jobSetupSection');
+  const active = document.getElementById('jobActiveSection');
+  const hist = document.getElementById('jobHistorySection');
+  const inp = document.getElementById('jobAddressInput');
+  if (setup) setup.style.display='block';
+  if (active) active.style.display='none';
+  if (hist) hist.style.display='block';
+  if (inp) inp.value='';
+  loadJobDraft();
+  loadJobHistory();
 }
 
 init();
