@@ -587,7 +587,7 @@ td{padding:8px 9px;vertical-align:middle}
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <h2 style="font-size:15px;font-weight:700;color:#e8edf2">🚚 Deliveries &amp; Collections</h2>
-        <button class="btn btn-primary admin-only" style="padding:6px 12px;font-size:12px;display:none" onclick="openNewDelivery()">+ New Order</button>
+        <button id="newOrderBtn" class="btn btn-primary" style="padding:6px 12px;font-size:12px;display:none" onclick="openNewDelivery()">+ New Order</button>
       </div>
 
       <!-- Pending -->
@@ -3398,32 +3398,35 @@ let pendingJobCompletionData = null; // holds job data while leftover modal is o
 
 // ── Page render ──
 async function renderDeliveriesPage() {
+  // Show New Order button immediately for admins — don't wait for data
+  const btn = document.getElementById('newOrderBtn');
+  if (btn) btn.style.display = currentUser?.role === 'admin' ? 'inline-block' : 'none';
   await Promise.all([renderPendingDeliveries(), renderConfirmedDeliveries()]);
-  // Show New Order button for admins only
-  const newOrderBtn = document.querySelector('#page-deliveries .btn-primary');
-  if (newOrderBtn) newOrderBtn.style.display = currentUser?.role === 'admin' ? 'inline-block' : 'none';
 }
 
 async function renderPendingDeliveries() {
   const el = document.getElementById('deliveryPendingList');
   if (!el) return;
   try {
-    const snap = await db.collection('deliveries').where('status','==','pending')
-      .orderBy('createdAt','desc').limit(50).get();
+    const snap = await db.collection('deliveries').where('status','==','pending').get();
     if (snap.empty) { el.innerHTML='<div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No pending collections</div>'; return; }
-    el.innerHTML = snap.docs.map(d => deliveryCard(d.id, d.data(), false)).join('');
-  } catch(e) { el.innerHTML='<div style="color:#ff6b6b;font-size:12px;text-align:center;padding:12px">Error loading deliveries</div>'; }
+    const docs = snap.docs.map(d => ({id:d.id,...d.data()}))
+      .sort((a,b) => (b.createdAt?.toMillis?.()??0) - (a.createdAt?.toMillis?.()??0));
+    el.innerHTML = docs.map(d => deliveryCard(d.id, d, false)).join('');
+  } catch(e) { el.innerHTML='<div style="color:#ff6b6b;font-size:12px;text-align:center;padding:12px">Error loading deliveries: '+e.message+'</div>'; }
 }
 
 async function renderConfirmedDeliveries() {
   const el = document.getElementById('deliveryConfirmedList');
   if (!el) return;
   try {
-    const snap = await db.collection('deliveries').where('status','==','confirmed')
-      .orderBy('confirmedAt','desc').limit(20).get();
+    const snap = await db.collection('deliveries').where('status','==','confirmed').get();
     if (snap.empty) { el.innerHTML='<div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">No confirmed orders yet</div>'; return; }
-    el.innerHTML = snap.docs.map(d => deliveryCard(d.id, d.data(), true)).join('');
-  } catch(e) { el.innerHTML='<div style="color:#ff6b6b;font-size:12px;text-align:center;padding:12px">Error loading history</div>'; }
+    const docs = snap.docs.map(d => ({id:d.id,...d.data()}))
+      .sort((a,b) => (b.confirmedAt?.toMillis?.()??0) - (a.confirmedAt?.toMillis?.()??0))
+      .slice(0,20);
+    el.innerHTML = docs.map(d => deliveryCard(d.id, d, true)).join('');
+  } catch(e) { el.innerHTML='<div style="color:#ff6b6b;font-size:12px;text-align:center;padding:12px">Error loading history: '+e.message+'</div>'; }
 }
 
 function deliveryCard(id, d, confirmed) {
