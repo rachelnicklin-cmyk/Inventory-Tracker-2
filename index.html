@@ -82,6 +82,22 @@ button{font-family:inherit;cursor:pointer}
 .tab-btn{padding:5px 11px;border:none;background:transparent;color:#6b8fad;font-size:12px;font-weight:500;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:.15s}
 .tab-btn:hover{color:#c8d8e8;background:#1e3248}
 .tab-btn.active{color:#3a7bd5;background:#1a2e48;font-weight:700}
+.flow-card{background:#0f1e30;border:1px solid #1e3248;border-radius:9px;margin-bottom:10px;overflow:hidden}
+.flow-card-head{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;cursor:pointer;gap:8px}
+.flow-card-head:hover{background:#152538}
+.flow-card-title{font-size:13px;font-weight:700;color:#e8edf2;display:flex;align-items:center;gap:8px}
+.flow-card-body{padding:4px 16px 16px 16px;display:none}
+.flow-card.open .flow-card-body{display:block}
+.flow-card-chevron{color:#4a6880;font-size:12px;transition:transform .15s}
+.flow-card.open .flow-card-chevron{transform:rotate(90deg)}
+.flow-step{position:relative;padding-left:32px;padding-bottom:16px}
+.flow-step:last-child{padding-bottom:0}
+.flow-step::before{content:'';position:absolute;left:10px;top:24px;bottom:-2px;width:2px;background:#2a4060}
+.flow-step:last-child::before{display:none}
+.flow-num{position:absolute;left:0;top:0;width:22px;height:22px;border-radius:50%;background:#1a2840;border:2px solid #3a7bd5;color:#3a7bd5;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.flow-step-text{font-size:12px;color:#e8edf2;font-weight:600;padding-top:2px}
+.flow-step-sub{font-size:11px;color:#6b8fad;margin-top:2px}
+.flow-decision{margin-top:8px;padding:8px 10px;background:#2e2410;border:1px solid #4a3a10;border-radius:6px;font-size:11px;color:#f0c020;line-height:1.5}
 .sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .sync-dot.ok{background:#22c55e}.sync-dot.busy{background:#f59e0b;animation:pulse 1s infinite}
 .sync-dot.err{background:#ef4444}
@@ -327,6 +343,7 @@ td{padding:8px 9px;vertical-align:middle}
       <button class="tab-btn" onclick="showPage('stocktake')">Stock Take</button>
       <button class="tab-btn" onclick="showPage('invoice')">Invoice</button>
       <button class="tab-btn" onclick="showPage('log')">Log</button>
+      <button class="tab-btn" onclick="showPage('help')" style="color:#f0a020">❓ Help</button>
       <button class="tab-btn admin-only" onclick="showPage('admin')" style="display:none">Admin</button>
     </div>
     <div class="sync-dot ok" id="syncDot" title="Live sync status"></div>
@@ -653,6 +670,15 @@ td{padding:8px 9px;vertical-align:middle}
         </div>
         <div id="jobReportList"><div style="color:#4a6880;font-size:12px;text-align:center;padding:12px 0">Set filters above and click Show Jobs</div></div>
       </div>
+    </div>
+  </div>
+
+  <!-- HELP / GUIDES -->
+  <div class="page" id="page-help">
+    <div style="padding:14px">
+      <h2 style="font-size:15px;font-weight:700;color:#e8edf2;margin-bottom:4px">❓ How To Guides</h2>
+      <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">Tap a scenario to see the steps. The same guides also exist as a printed poster in the van/workshop.</p>
+      <div id="helpGuideList"></div>
     </div>
   </div>
 </div>
@@ -1483,6 +1509,7 @@ function showPage(name) {
   if (name !== 'job') stopJobScanner();
   if (name === 'job') renderJobPage();
   if (name === 'deliveries') renderDeliveriesPage();
+  if (name === 'help') renderHelpPage();
 }
 
 // ════════════════════════════════════════
@@ -1919,32 +1946,70 @@ async function confirmDelete() {
 // ════════════════════════════════════════
 //  REORDER LIST
 // ════════════════════════════════════════
+// Groups items needing reorder by Category, then by best supplier within
+// each category, so a reorder run can be worked through one supplier at a
+// time within each part of the job.
+function groupedReorderList() {
+  const need = items.filter(i => ['low', 'out'].includes(iStatus(i)));
+  const byCategory = {};
+  need.forEach(item => {
+    const cat = item.category || 'Uncategorised';
+    (byCategory[cat] = byCategory[cat] || []).push(item);
+  });
+  const categories = Object.keys(byCategory).sort((a, b) => a.localeCompare(b));
+  const groups = [];
+  categories.forEach(cat => {
+    const bySupplier = {};
+    byCategory[cat].forEach(item => {
+      const sups = item.suppliers || {};
+      const keys = Object.keys(sups).filter(k => sups[k] && sups[k].price > 0).sort((a, b) => Number(sups[a].price) - Number(sups[b].price));
+      const bk = keys[0] || 'No supplier price set';
+      (bySupplier[bk] = bySupplier[bk] || []).push(item);
+    });
+    const suppliers = Object.keys(bySupplier).sort((a, b) => {
+      if (a === 'No supplier price set') return 1;
+      if (b === 'No supplier price set') return -1;
+      return a.localeCompare(b);
+    });
+    suppliers.forEach(sup => groups.push({ category: cat, supplier: sup, items: bySupplier[sup] }));
+  });
+  return { need, groups };
+}
+
 function openReorderList() {
-  const need = items.filter(i => ['low','out'].includes(iStatus(i)));
+  const { need, groups } = groupedReorderList();
   let h = '';
   if (!need.length) h = '<div class="empty-state"><div style="font-size:26px;margin-bottom:8px">🎉</div>Nothing needs reordering!</div>';
   else {
-    h = `<p style="font-size:12px;color:#4a6880;margin-bottom:11px">${need.length} item${need.length!==1?'s':''} below minimum or out of stock</p>`;
-    need.forEach(item => {
-      const s=iStatus(item), sups=item.suppliers||{};
-      const keys=Object.keys(sups).filter(k=>sups[k]&&sups[k].price>0).sort((a,b)=>Number(sups[a].price)-Number(sups[b].price));
-      const bk=keys[0];
-      h += `<div style="padding:11px 0;border-bottom:1px solid #1e3248;display:flex;align-items:flex-start;justify-content:space-between;gap:9px;flex-wrap:wrap">
-        <div>
-          <div style="font-weight:600;color:#e8edf2;font-size:12px">${item.name}</div>
-          ${item.mfr_code?`<div class="mfr-code">${item.mfr_code}</div>`:''}
-          <div style="margin-top:3px">${sBadge(s)} <span style="font-size:10px;color:#4a6880">Total: ${totalQty(item)} / Min: ${item.min_qty||0}</span></div>
-          <div style="margin-top:4px">${locationBreakdownHtml(item, true)}</div>
-        </div>
-        <div style="text-align:right">
-          ${bk?`<div style="font-weight:700;color:#3a7bd5;font-size:13px">£${Number(sups[bk].price).toFixed(2)}</div>
-            <div style="font-size:10px;color:#4a6880">${bk}</div>
-            ${sups[bk].code_display||cleanCode(sups[bk].code||'')?`<div class="mfr-code">${sups[bk].code_display||cleanCode(sups[bk].code||'')}</div>`:''}`:''}
-          <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">
-            ${keys.slice(0,3).map(k=>`<a class="reorder-link" href="${orderUrl(k,sups[k].code,item)||SUPPLIER_SITES[k]||'#'}" target="_blank">↗ ${k} £${Number(sups[k].price).toFixed(2)}</a>`).join('')}
+    h = `<p style="font-size:12px;color:#4a6880;margin-bottom:11px">${need.length} item${need.length !== 1 ? 's' : ''} below minimum or out of stock</p>`;
+    let lastCategory = null;
+    groups.forEach(group => {
+      if (group.category !== lastCategory) {
+        h += `<div style="font-size:12px;font-weight:700;color:#3a7bd5;text-transform:uppercase;letter-spacing:.4px;margin:18px 0 8px;padding-bottom:5px;border-bottom:1px solid #2a4060">${group.category}</div>`;
+        lastCategory = group.category;
+      }
+      h += `<div style="font-size:10px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin:10px 0 6px 2px">🏬 ${group.supplier}</div>`;
+      group.items.forEach(item => {
+        const s = iStatus(item), sups = item.suppliers || {};
+        const keys = Object.keys(sups).filter(k => sups[k] && sups[k].price > 0).sort((a, b) => Number(sups[a].price) - Number(sups[b].price));
+        const bk = keys[0];
+        h += `<div style="padding:11px 0;border-bottom:1px solid #1e3248;display:flex;align-items:flex-start;justify-content:space-between;gap:9px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:600;color:#e8edf2;font-size:12px">${item.name}</div>
+            ${item.mfr_code?`<div class="mfr-code">${item.mfr_code}</div>`:''}
+            <div style="margin-top:3px">${sBadge(s)} <span style="font-size:10px;color:#4a6880">Total: ${totalQty(item)} / Min: ${item.min_qty||0}</span></div>
+            <div style="margin-top:4px">${locationBreakdownHtml(item, true)}</div>
           </div>
-        </div>
-      </div>`;
+          <div style="text-align:right">
+            ${bk?`<div style="font-weight:700;color:#3a7bd5;font-size:13px">£${Number(sups[bk].price).toFixed(2)}</div>
+              <div style="font-size:10px;color:#4a6880">${bk}</div>
+              ${sups[bk].code_display||cleanCode(sups[bk].code||'')?`<div class="mfr-code">${sups[bk].code_display||cleanCode(sups[bk].code||'')}</div>`:''}`:''}
+            <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">
+              ${keys.slice(0,3).map(k=>`<a class="reorder-link" href="${orderUrl(k,sups[k].code,item)||SUPPLIER_SITES[k]||'#'}" target="_blank">↗ ${k} £${Number(sups[k].price).toFixed(2)}</a>`).join('')}
+            </div>
+          </div>
+        </div>`;
+      });
     });
   }
   document.getElementById('reorderBody').innerHTML = h;
@@ -3038,13 +3103,22 @@ function exportCSV(){
   dl(rows.map(r=>r.map(c=>`"${String(c||'').replace(/"/g,"''")}"`).join(',')).join('\n'),'rachel_materials.csv','text/csv');
 }
 function exportReorderCSV(){
-  const need=items.filter(i=>['low','out'].includes(iStatus(i)));
+  const { groups } = groupedReorderList();
   const rows=[['Category','Item','Mfr Code','Total Qty',...LOCATIONS,'Min','Status','Best Supplier','Code','Price','Order URL']];
-  need.forEach(i=>{
-    const sups=i.suppliers||{}, keys=Object.keys(sups).filter(k=>sups[k]&&sups[k].price>0).sort((a,b)=>Number(sups[a].price)-Number(sups[b].price));
-    const bk=keys[0]||'', dc=bk?(sups[bk].code_display||cleanCode(sups[bk].code||'')):'';
-    const locs=getLocations(i);
-    rows.push([i.category||'',i.name||'',i.mfr_code||'',totalQty(i),...LOCATIONS.map(l=>locs[l]||0),i.min_qty||0,iStatus(i),bk,dc,bk?Number(sups[bk].price).toFixed(2):'',bk?orderUrl(bk,sups[bk].code,i):'']);
+  const blankRow = () => new Array(rows[0].length).fill('');
+  let lastCategory = null;
+  groups.forEach(group => {
+    if (group.category !== lastCategory) {
+      const r = blankRow(); r[0] = `CATEGORY: ${group.category}`; rows.push(r);
+      lastCategory = group.category;
+    }
+    const supRow = blankRow(); supRow[0] = `  Supplier: ${group.supplier}`; rows.push(supRow);
+    group.items.forEach(i=>{
+      const sups=i.suppliers||{}, keys=Object.keys(sups).filter(k=>sups[k]&&sups[k].price>0).sort((a,b)=>Number(sups[a].price)-Number(sups[b].price));
+      const bk=keys[0]||'', dc=bk?(sups[bk].code_display||cleanCode(sups[bk].code||'')):'';
+      const locs=getLocations(i);
+      rows.push(['  '+(i.category||''),i.name||'',i.mfr_code||'',totalQty(i),...LOCATIONS.map(l=>locs[l]||0),i.min_qty||0,iStatus(i),bk,dc,bk?Number(sups[bk].price).toFixed(2):'',bk?orderUrl(bk,sups[bk].code,i):'']);
+    });
   });
   dl(rows.map(r=>r.map(c=>`"${String(c||'').replace(/"/g,"''")}"`).join(',')).join('\n'),'reorder_list.csv','text/csv');
 }
@@ -4550,6 +4624,101 @@ closeModal = function(id) {
   }
   _origCloseModal(id);
 };
+
+// ════════════════════════════════════════
+//  HELP / HOW-TO GUIDES
+// ════════════════════════════════════════
+// Same content used both for the in-app Help tab and the printed poster.
+const HELP_GUIDES = [
+  {
+    icon: '🚚', title: 'Receiving a Delivery / Collection',
+    steps: [
+      { text: 'Open the Deliveries tab', sub: 'Find the order under "Awaiting Collection"' },
+      { text: 'Tap "Confirm Collection" on that order' },
+      { text: 'Check the quantities', sub: 'Edit any number if what arrived is different to what was ordered', decision: 'Got less than ordered? Change the "Got" number to what actually arrived — you can order the rest another time.' },
+      { text: 'Add any extra items', sub: 'Anything picked up that wasn\'t on the original order — use "+ Add Extra Item"' },
+      { text: 'Choose a stock location for every item' },
+      { text: 'Add a photo of the delivery note / receipt (optional but recommended)' },
+      { text: 'Tap "Confirm & Add to Stock"', sub: 'Stock updates immediately and the order moves to "Recently Confirmed"' }
+    ]
+  },
+  {
+    icon: '🔧', title: 'Using Stock On a Job (Job Mode)',
+    steps: [
+      { text: 'Open the Job tab' },
+      { text: 'Tap "Start New Job"', sub: 'Or "Resume Draft" if you already started one' },
+      { text: 'Scan or search each item as you use it', sub: 'Tap "Start Camera" to scan, or type the item name' },
+      { text: 'Add it to the Items Used list with the right quantity' },
+      { text: 'Repeat for every item used on the job' },
+      { text: 'Tap "Complete Job & Deduct Stock"', decision: 'Got leftover stock from the job? You\'ll be asked where to put it back — fill in a location, or tap "Skip" if there\'s nothing left over.' }
+    ]
+  },
+  {
+    icon: '📷', title: 'Scanning a Barcode',
+    steps: [
+      { text: 'Open the Scan tab' },
+      { text: 'Tap "Start Camera"' },
+      { text: 'Point the camera at the item\'s barcode label' },
+      { text: 'Choose what to do with the item', sub: '"Use Stock", "Add Stock", "View Item", or "Print Label"', decision: 'Barcode not found? The item either doesn\'t have a barcode yet, or isn\'t in the app. Go to Admin and use the "⚠ Missing barcode" filter to check, or add it as a new item.' }
+    ]
+  },
+  {
+    icon: '🧾', title: 'Uploading a Supplier Invoice',
+    steps: [
+      { text: 'Open the Invoice tab' },
+      { text: 'Tap to upload the supplier PDF' },
+      { text: 'Wait while Claude reads the invoice', sub: 'Takes a few seconds' },
+      { text: 'Check the matched items look right', sub: 'Quantities and locations can be adjusted before applying' },
+      { text: 'Tap "✓ Apply All"', decision: 'Any items shown as "Unmatched"? That means the invoice wording doesn\'t match the item name in the app — add those manually via Add Item or Use Stock.' }
+    ]
+  },
+  {
+    icon: '📋', title: 'Doing a Stock Take',
+    steps: [
+      { text: 'Open the Stock Take tab' },
+      { text: 'Tap "Start / Continue Stock Take"' },
+      { text: 'Scan or tick off each item as you count it', sub: 'Correct the number on the spot if it\'s wrong' },
+      { text: 'Save and come back later if needed', sub: 'Your progress is kept — just tap Close (save progress)' },
+      { text: 'Once everything is checked, tap "✓ Mark Stock Take Complete"' }
+    ]
+  },
+  {
+    icon: '⚠️', title: 'Item Missing a Barcode or Price',
+    steps: [
+      { text: 'Go to Admin > Inventory', sub: 'Use the "⚠ Missing barcode" filter to find affected items' },
+      { text: 'Open the item', decision: 'No barcode? Tap "Generate" on the item\'s barcode field, then print a label from "🖨️ Print Labels".' },
+      { text: 'Check Supplier Prices & Codes', decision: 'No price listed? Add the supplier, their code, and price under "Supplier Prices & Codes" so the reorder list and invoice matching both work properly.' },
+      { text: 'Save the item' }
+    ]
+  }
+];
+
+function renderHelpPage() {
+  const el = document.getElementById('helpGuideList');
+  el.innerHTML = HELP_GUIDES.map((guide, gi) => `
+    <div class="flow-card" id="flowcard-${gi}">
+      <div class="flow-card-head" onclick="toggleFlowCard(${gi})">
+        <div class="flow-card-title"><span>${guide.icon}</span><span>${guide.title}</span></div>
+        <span class="flow-card-chevron">▶</span>
+      </div>
+      <div class="flow-card-body">
+        ${guide.steps.map((s, si) => `
+          <div class="flow-step">
+            <div class="flow-num">${si + 1}</div>
+            <div class="flow-step-text">${s.text}</div>
+            ${s.sub ? `<div class="flow-step-sub">${s.sub}</div>` : ''}
+            ${s.decision ? `<div class="flow-decision">⚠ ${s.decision}</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function toggleFlowCard(i) {
+  const card = document.getElementById('flowcard-' + i);
+  const wasOpen = card.classList.contains('open');
+  document.querySelectorAll('.flow-card').forEach(c => c.classList.remove('open'));
+  if (!wasOpen) card.classList.add('open');
+}
 
 init();
 </script>
