@@ -944,7 +944,7 @@ td{padding:8px 9px;vertical-align:middle}
     <div id="supEditorRows"></div>
     <p class="err-msg" id="itemErr">Please fill in name and category.</p>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="pendingMinvRowIndex=null;closeModal('itemModal')">Cancel</button>
+      <button class="btn btn-ghost" onclick="pendingMinvRowIndex=null;pendingDelRowIndex=null;closeModal('itemModal')">Cancel</button>
       <button class="btn btn-primary" id="saveItemBtn" onclick="saveItem()">Save</button>
     </div>
   </div>
@@ -1976,6 +1976,12 @@ async function saveItem() {
         renderManualInvoiceRows();
         pendingMinvRowIndex = null;
       }
+      if (pendingDelRowIndex !== null && deliveryItemRowData[pendingDelRowIndex]) {
+        deliveryItemRowData[pendingDelRowIndex].itemId = ref.id;
+        deliveryItemRowData[pendingDelRowIndex].name = name;
+        renderDeliveryItemRows();
+        pendingDelRowIndex = null;
+      }
     }
     setSync('ok');
     closeModal('itemModal');
@@ -2625,6 +2631,7 @@ async function completeStockTake() {
 // ════════════════════════════════════════
 let manualInvoiceItems = []; // [{itemId, name, qty}]
 let pendingMinvRowIndex = null; // tracks which invoice row triggered "+ Add New Item", so we can fill it in once saved
+let pendingDelRowIndex = null; // same idea, but for the New/Edit Order item rows
 
 function addManualInvoiceRow() {
   manualInvoiceItems.push({itemId:'', name:'', qty:1});
@@ -4256,6 +4263,8 @@ function renderDeliveryItemRows() {
     <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:4px;margin-bottom:6px;align-items:center">
       <select onchange="delItemSelect(${i},this.value)" style="padding:7px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
         <option value="">Select item...</option>
+        <option value="__new__" style="color:#4cdf8a">+ Add New Item...</option>
+        ${items.find(it=>it.id===row.itemId) ? '' : row.itemId ? `<option value="${row.itemId}" selected>${row.name} (new)</option>` : ''}
         ${items.map(it=>`<option value="${it.id}"${it.id===row.itemId?' selected':''}>${it.name}</option>`).join('')}
       </select>
       <input type="number" min="1" value="${row.qty}" oninput="deliveryItemRowData[${i}].qty=Math.max(1,parseInt(this.value)||1)"
@@ -4265,6 +4274,12 @@ function renderDeliveryItemRows() {
 }
 
 function delItemSelect(i, itemId) {
+  if (itemId === '__new__') {
+    pendingDelRowIndex = i;
+    openAdd();
+    renderDeliveryItemRows(); // reset the select back to blank until the new item is saved
+    return;
+  }
   const item = items.find(it=>it.id===itemId);
   deliveryItemRowData[i].itemId = itemId;
   deliveryItemRowData[i].name = item?.name||'';
