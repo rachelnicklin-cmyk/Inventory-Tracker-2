@@ -473,9 +473,11 @@ td{padding:8px 9px;vertical-align:middle}
           <div>
             <div style="font-size:13px;font-weight:700;color:#e8edf2" id="invoiceSupplierLabel"></div>
             <div style="font-size:11px;color:#4a6880;margin-top:1px" id="invoiceDateLabel"></div>
+            <div style="font-size:11px;color:#4cdf8a;margin-top:2px" id="invoiceAddressLabel"></div>
           </div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-success" style="padding:5px 11px;font-size:11px" onclick="applyAllInvoice()">✓ Apply All</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-success" style="padding:5px 11px;font-size:11px" onclick="applyAllInvoice()">✓ Apply All to Stock</button>
+            <button class="btn btn-outline" style="padding:5px 11px;font-size:11px" id="invoiceCreateOrderBtn" onclick="createOrderFromInvoice()">📦 Create Order Record</button>
             <button class="btn btn-ghost" style="padding:5px 11px;font-size:11px" onclick="cancelInvoice()">Discard</button>
           </div>
         </div>
@@ -2542,7 +2544,7 @@ async function processInvoice(file) {
     const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
     setProgress(45,'Sending to Claude AI...');
     const itemContext=items.map(i=>{const codes=Object.entries(i.suppliers||{}).map(([s,d])=>`${s}:${d.code_display||cleanCode(d.code||'')}`).filter(x=>x.includes(':')).join(', ');return `ID:${i.id}|${i.name}|MfrCode:${i.mfr_code||''}|SupCodes:${codes}`;}).join('\n');
-    const prompt=`You are analysing a supplier invoice PDF for a plumbing and heating business. Extract all line items and match to our database by product code or description.\n\nDatabase:\n${itemContext}\n\nReturn ONLY valid JSON, no markdown:\n{"supplier":"name","invoice_date":"date","invoice_number":"num","items":[{"item_id":"firestore_id","matched_name":"name","invoice_description":"desc","invoice_code":"code","quantity":5,"unit_price":12.50,"confidence":"high/medium/low"}],"unmatched":[{"invoice_description":"desc","invoice_code":"code","quantity":2,"unit_price":8.00}]}`;
+    const prompt=`You are analysing a supplier invoice or order confirmation PDF for a plumbing and heating business. Invoices from different suppliers vary a lot in layout — read whatever format this one uses. Extract all line items and match to our database by product code or description. Also find the delivery/site address this was shipped or delivered to (often labelled "Ship To", "Deliver To", "Site Address", or similar — NOT the billing/invoice-to address if they differ).\n\nDatabase:\n${itemContext}\n\nReturn ONLY valid JSON, no markdown:\n{"supplier":"name","invoice_date":"date","invoice_number":"num","delivery_address":"full ship-to/delivery address as a single string, or empty if not found","items":[{"item_id":"firestore_id","matched_name":"name","invoice_description":"desc","invoice_code":"code","quantity":5,"unit_price":12.50,"confidence":"high/medium/low"}],"unmatched":[{"invoice_description":"desc","invoice_code":"code","quantity":2,"unit_price":8.00}]}`;
     const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},{type:'text',text:prompt}]}]})});
     setProgress(80,'Matching items...');
     const data=await response.json();
@@ -2558,12 +2560,17 @@ async function processInvoice(file) {
   }
 }
 function setProgress(pct,msg){document.getElementById('progressBar').style.width=pct+'%';document.getElementById('processingMsg').textContent=msg;}
+let invoiceMeta = {}; // {supplier, invoice_number, invoice_date, delivery_address, unmatched}
+let invoiceAllMatched = []; // full copy of matched items, kept even after individual rows are applied/dismissed
 function showInvoiceResults(parsed,filename) {
   document.getElementById('invoiceProcessing').style.display='none';
   document.getElementById('invoiceResults').style.display='block';
   document.getElementById('invoiceSupplierLabel').textContent=`Invoice: ${parsed.supplier||'Unknown'}${parsed.invoice_number?' · #'+parsed.invoice_number:''}`;
   document.getElementById('invoiceDateLabel').textContent=`Date: ${parsed.invoice_date||'Not detected'} · ${filename}`;
+  document.getElementById('invoiceAddressLabel').textContent = parsed.delivery_address ? `📍 ${parsed.delivery_address}` : '';
   invoicePending=parsed.items||[];
+  invoiceAllMatched = [...invoicePending];
+  invoiceMeta = { supplier: parsed.supplier||'', invoice_number: parsed.invoice_number||'', delivery_address: parsed.delivery_address||'', unmatched: parsed.unmatched||[] };
   let h='';
   if (!invoicePending.length&&!parsed.unmatched?.length) h='<div class="empty-state">No line items detected.</div>';
   else {
@@ -2615,7 +2622,31 @@ async function applyInvoiceRow(idx) {
 }
 function dismissInvoiceRow(idx){document.getElementById('inv-row-'+idx)?.remove();invoicePending[idx]=null;}
 async function applyAllInvoice(){let c=0;for(let i=0;i<invoicePending.length;i++){if(invoicePending[i]){await applyInvoiceRow(i);c++;}}toast(`Applied ${c} updates`,'success');}
-function cancelInvoice(){invoicePending=[];document.getElementById('invoiceResults').style.display='none';document.getElementById('dropZone').style.display='block';document.getElementById('fileInput').value='';}
+function cancelInvoice(){invoicePending=[];invoiceAllMatched=[];invoiceMeta={};document.getElementById('invoiceResults').style.display='none';document.getElementById('dropZone').style.display='block';document.getElementById('fileInput').value='';}
+
+function createOrderFromInvoice() {
+  const matched = invoiceAllMatched.filter(inv => inv && inv.item_id && items.find(i => i.id == inv.item_id));
+  if (!matched.length && !invoiceMeta.unmatched?.length) { toast('No items to add to an order', 'error'); return; }
+
+  openNewDelivery();
+  deliveryItemRowData = matched.map(inv => ({ itemId: inv.item_id, name: inv.matched_name, qty: inv.quantity }));
+  renderDeliveryItemRows();
+
+  document.getElementById('del-customer-address').value = invoiceMeta.delivery_address || '';
+  document.getElementById('del-supplier').value = invoiceMeta.supplier || '';
+
+  let notes = `Imported from invoice${invoiceMeta.invoice_number ? ' #' + invoiceMeta.invoice_number : ''}`;
+  if (invoiceMeta.unmatched?.length) {
+    notes += ` — no stock match, add manually: ${invoiceMeta.unmatched.map(u => `${u.invoice_description} ×${u.quantity}`).join(', ')}`;
+  }
+  document.getElementById('del-notes').value = notes;
+
+  if (!invoiceMeta.delivery_address) {
+    toast('No delivery address detected on this invoice — please fill it in before saving', 'error');
+  } else {
+    toast(`Order pre-filled with ${matched.length} item${matched.length !== 1 ? 's' : ''} — review and save`, 'success');
+  }
+}
 
 
 // ════════════════════════════════════════
