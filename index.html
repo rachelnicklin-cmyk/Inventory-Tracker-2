@@ -160,6 +160,7 @@ td{padding:8px 9px;vertical-align:middle}
 .btn-use-row{background:#1a2a40;color:#a78bfa;border:1px solid #2d2060}.btn-use-row:hover{background:#231a4a}
 .btn-transfer-row{background:#0a2540;color:#5b9fd5;border:1px solid #1e3a5a}.btn-transfer-row:hover{background:#0e2f52}
 .btn-adj-row{background:#1a2040;color:#e8b44c;border:1px solid #3a3010}.btn-adj-row:hover{background:#2a2a10}
+.btn-return-row{background:#3a1a10;color:#f0805a;border:1px solid #4a2010}.btn-return-row:hover{background:#4a2010}
 .btn-sup-row{background:#052e16;color:#22c55e;border:1px solid #14532d}.btn-sup-row:hover{background:#072e16}
 .btn-del-row{background:#2d0808;color:#ef4444;border:1px solid #3a1010}.btn-del-row:hover{background:#3d1010}
 .pagination{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-top:1px solid #1e3248;flex-wrap:wrap;gap:6px}
@@ -228,7 +229,7 @@ td{padding:8px 9px;vertical-align:middle}
 .history-row:last-child{border-bottom:none}
 .log-entry{background:#162030;border:1px solid #1e3248;border-radius:7px;padding:9px 12px;margin-bottom:6px;display:flex;align-items:flex-start;gap:9px}
 .log-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
-.log-icon.qty{background:#1a2840}.log-icon.invoice{background:#1a3048}.log-icon.add{background:#052e16}.log-icon.del{background:#2d0808}.log-icon.edit{background:#2d1a00}
+.log-icon.qty{background:#1a2840}.log-icon.invoice{background:#1a3048}.log-icon.add{background:#052e16}.log-icon.del{background:#2d0808}.log-icon.edit{background:#2d1a00}.log-icon.return{background:#3a1a10}
 .log-body{flex:1;min-width:0}
 .log-title{font-size:12px;font-weight:600;color:#e8edf2}
 .log-detail{font-size:11px;color:#4a6880;margin-top:1px;word-break:break-word}
@@ -990,8 +991,11 @@ td{padding:8px 9px;vertical-align:middle}
       <div class="field"><label>From *</label><select id="tr-from"></select></div>
       <div class="field"><label>To *</label><select id="tr-to"></select></div>
     </div>
-    <div class="form-row full">
+    <div class="form-row full" style="margin-bottom:10px">
       <div class="field"><label>Quantity to transfer *</label><input type="number" id="tr-qty" min="1" value="1" inputmode="numeric"></div>
+    </div>
+    <div class="form-row full">
+      <div class="field"><label>Note (optional) <span style="font-size:10px;color:#4a6880">e.g. "correcting engineer error"</span></label><input type="text" id="tr-note" placeholder="e.g. Correcting mistaken use from wrong location"></div>
     </div>
     <p class="err-msg" id="transferErr"></p>
     <div class="modal-footer">
@@ -1018,6 +1022,35 @@ td{padding:8px 9px;vertical-align:middle}
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('adjustModal')">Cancel</button>
       <button class="btn btn-primary" id="adjustBtn" onclick="confirmAdjust()">Save Correction</button>
+    </div>
+  </div>
+</div>
+
+<!-- Return to Supplier -->
+<div class="overlay" id="returnStockModal">
+  <div class="modal sm">
+    <h2>↩️ Return to Supplier</h2>
+    <p style="font-size:12px;color:#6b8fad;margin-bottom:14px">Record stock going back to a supplier (faulty, wrong item, over-ordered). This removes it from stock.</p>
+    <div style="background:#1a2840;border-radius:7px;padding:11px 13px;margin-bottom:13px">
+      <div style="font-weight:700;color:#e8edf2;font-size:13px" id="returnItemName"></div>
+      <div style="font-size:12px;color:#4a6880;margin-top:5px" id="returnLocBreakdown"></div>
+    </div>
+    <div class="form-row full" style="margin-bottom:10px">
+      <div class="field"><label>Return from location *</label><select id="ret-location"></select></div>
+    </div>
+    <div class="form-row full" style="margin-bottom:10px">
+      <div class="field"><label>Quantity to return *</label><input type="number" id="ret-qty" min="1" value="1" inputmode="numeric"></div>
+    </div>
+    <div class="form-row full" style="margin-bottom:10px">
+      <div class="field"><label>Supplier</label><select id="ret-supplier"></select></div>
+    </div>
+    <div class="form-row full">
+      <div class="field"><label>Reason (optional)</label><input type="text" id="ret-reason" placeholder="e.g. Faulty, wrong item sent, over-ordered"></div>
+    </div>
+    <p class="err-msg" id="returnStockErr"></p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('returnStockModal')">Cancel</button>
+      <button class="btn btn-warn" id="returnStockBtn" onclick="confirmReturnStock()">Confirm Return</button>
     </div>
   </div>
 </div>
@@ -1595,6 +1628,7 @@ function renderTableBody() {
         <button class="action-btn btn-use-row" onclick="openUseStock('${item.id}')">Use</button>
         <button class="action-btn btn-adj-row" onclick="openAdjust('${item.id}')" title="Correct a quantity">✏️</button>
         <button class="action-btn btn-transfer-row" onclick="openTransfer('${item.id}')" title="Transfer between locations">⇄</button>
+        <button class="action-btn btn-return-row" onclick="openReturnStock('${item.id}')" title="Return stock to supplier">↩️</button>
         <button class="action-btn btn-sup-row" onclick="showSuppliers('${item.id}')">↗</button>
         ${isAdmin?`<button class="action-btn btn-del-row" onclick="askDelete('${item.id}')">×</button>`:''}
       </div></td>
@@ -1679,6 +1713,7 @@ function openTransfer(id) {
   toSel.innerHTML   = LOCATIONS.map(l => `<option value="${l}">${l}</option>`).join('');
   toSel.value = LOCATIONS.find(l => l !== fromSel.value) || LOCATIONS[0];
   document.getElementById('tr-qty').value = 1;
+  document.getElementById('tr-note').value = '';
   document.getElementById('transferErr').style.display = 'none';
   document.getElementById('transferModal').classList.add('open');
 }
@@ -1694,17 +1729,61 @@ async function confirmTransfer() {
   if (qty < 1) { errEl.textContent='Enter at least 1.'; errEl.style.display='block'; return; }
   if (qty > available) { errEl.textContent=`Only ${available} available at ${fromLoc}.`; errEl.style.display='block'; return; }
   const newLocs = {...locs, [fromLoc]: available - qty, [toLoc]: (locs[toLoc]||0) + qty};
+  const note = document.getElementById('tr-note').value.trim();
   document.getElementById('transferBtn').disabled = true;
   setSync('busy');
   try {
     await db.collection('items').doc(transferItemId).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
     await logAction('qty', `Stock transferred: ${item.name}`,
-      `${currentUser.name} moved ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc} to ${toLoc}`);
+      `${currentUser.name} moved ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc} to ${toLoc}${note ? ' — Note: ' + note : ''}`);
     setSync('ok');
     closeModal('transferModal');
     toast(`${qty}× ${item.name} moved: ${fromLoc} → ${toLoc}`, 'success');
   } catch(e) { setSync('err'); errEl.textContent='Save failed: '+e.message; errEl.style.display='block'; }
   document.getElementById('transferBtn').disabled = false;
+}
+
+// ── Return to Supplier ──
+let returnItemId = null;
+function openReturnStock(id) {
+  const item = items.find(i => i.id===id); if (!item) return;
+  returnItemId = id;
+  document.getElementById('returnItemName').textContent = item.name;
+  document.getElementById('returnLocBreakdown').innerHTML = locationBreakdownHtml(item, false);
+  const locs = getLocations(item);
+  const locSel = document.getElementById('ret-location');
+  locSel.innerHTML = LOCATIONS.map(l => `<option value="${l}">${l} (${locs[l]||0} available)</option>`).join('');
+  const supSel = document.getElementById('ret-supplier');
+  const supNames = Object.keys(item.suppliers || {});
+  supSel.innerHTML = (supNames.length ? supNames.map(s => `<option value="${s}">${s}</option>`).join('') : '') + '<option value="">Other / not listed</option>';
+  document.getElementById('ret-qty').value = 1;
+  document.getElementById('ret-reason').value = '';
+  document.getElementById('returnStockErr').style.display = 'none';
+  document.getElementById('returnStockModal').classList.add('open');
+}
+async function confirmReturnStock() {
+  const item = items.find(i => i.id===returnItemId); if (!item) return;
+  const qty = parseInt(document.getElementById('ret-qty').value)||0;
+  const fromLoc = document.getElementById('ret-location').value;
+  const supplier = document.getElementById('ret-supplier').value;
+  const reason = document.getElementById('ret-reason').value.trim();
+  const errEl = document.getElementById('returnStockErr');
+  const locs = getLocations(item);
+  const available = locs[fromLoc]||0;
+  if (qty < 1) { errEl.textContent='Enter at least 1.'; errEl.style.display='block'; return; }
+  if (qty > available) { errEl.textContent=`Only ${available} available at ${fromLoc}.`; errEl.style.display='block'; return; }
+  const newLocs = {...locs, [fromLoc]: available - qty};
+  document.getElementById('returnStockBtn').disabled = true;
+  setSync('busy');
+  try {
+    await db.collection('items').doc(returnItemId).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
+    await logAction('return', `Returned to supplier: ${item.name}`,
+      `${currentUser.name} returned ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc}${supplier?' to '+supplier:''}${reason?' — Reason: '+reason:''} · ${fromLoc}: ${available} → ${available-qty}`);
+    setSync('ok');
+    closeModal('returnStockModal');
+    toast(`${qty}× ${item.name} marked as returned to ${supplier||'supplier'}`, 'success');
+  } catch(e) { setSync('err'); errEl.textContent='Save failed: '+e.message; errEl.style.display='block'; }
+  document.getElementById('returnStockBtn').disabled = false;
 }
 
 // ════════════════════════════════════════
@@ -2021,7 +2100,7 @@ function openReorderList() {
 // ════════════════════════════════════════
 //  ACTIVITY LOG
 // ════════════════════════════════════════
-const LOG_ICONS = {qty:'📦',invoice:'🧾',add:'✅',del:'🗑️',edit:'✏️'};
+const LOG_ICONS = {qty:'📦',invoice:'🧾',add:'✅',del:'🗑️',edit:'✏️',return:'↩️'};
 async function loadLog() {
   document.getElementById('logEntries').innerHTML = '<div class="empty-state"><div class="spinner" style="margin:0 auto 10px"></div>Loading...</div>';
   try {
@@ -2676,6 +2755,12 @@ function oformSetProgress(pct, msg) {
 async function handleOrderFormFile(e) {
   const file = e.target.files[0];
   if (!file) return;
+  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name);
+  if (!isSpreadsheet) {
+    toast('That looks like a PDF, not a spreadsheet — use the Invoice tab instead for supplier invoices/PDFs.', 'error');
+    e.target.value = '';
+    return;
+  }
   document.getElementById('oformDropZone').style.display = 'none';
   document.getElementById('oformProcessing').style.display = 'block';
   oformSetProgress(15, 'Reading spreadsheet...');
@@ -2916,6 +3001,12 @@ function catSetProgress(pct, msg) {
 async function handleCatalogFile(e) {
   const file = e.target.files[0];
   if (!file) return;
+  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name);
+  if (!isSpreadsheet) {
+    toast('That looks like a PDF, not a spreadsheet — use the Invoice tab instead for supplier invoices/PDFs.', 'error');
+    e.target.value = '';
+    return;
+  }
   document.getElementById('catDropZone').style.display = 'none';
   document.getElementById('catProcessing').style.display = 'block';
   catSetProgress(15, 'Reading spreadsheet...');
