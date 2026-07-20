@@ -609,7 +609,7 @@ td{padding:8px 9px;vertical-align:middle}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <h2 style="font-size:15px;font-weight:700;color:#e8edf2">🚚 Deliveries &amp; Collections</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button id="importOrderFormBtn" class="btn btn-outline" style="padding:6px 12px;font-size:12px" onclick="openImportOrderForm()">📥 Import Order Form</button>
+          <button id="importOrderFormBtn" class="btn btn-outline" style="padding:6px 12px;font-size:12px" onclick="openImportOrderForm()" title="For Rachel's own Materials Order Form spreadsheet only — NOT for supplier invoices">📥 Import Materials Order Form (spreadsheet only)</button>
           <button id="newOrderBtn" class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="openNewDelivery()">+ New Order</button>
         </div>
       </div>
@@ -741,7 +741,8 @@ td{padding:8px 9px;vertical-align:middle}
 <div class="overlay" id="importOrderFormModal" onclick="if(event.target===this)closeModal('importOrderFormModal')">
   <div class="modal" style="max-width:640px;max-height:90vh;overflow-y:auto">
     <h2 style="font-size:14px;margin-bottom:4px">📥 Import Materials Order Form</h2>
-    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">Upload the job's Materials Order Form (.xlsx). The app checks each item against current stock and suggests what's already covered and what needs ordering.</p>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:6px">Upload the job's Materials Order Form (.xlsx). The app checks each item against current stock and suggests what's already covered and what needs ordering.</p>
+    <p style="font-size:11px;color:#f0a020;margin-bottom:14px">⚠ Not for supplier invoices — upload those in the Invoice tab instead.</p>
 
     <div id="oformDropZone" style="border:2px dashed #2a4060;border-radius:8px;padding:22px;text-align:center;cursor:pointer;margin-bottom:12px" onclick="document.getElementById('oformFileInput').click()">
       <div style="font-size:24px;margin-bottom:6px">📄</div>
