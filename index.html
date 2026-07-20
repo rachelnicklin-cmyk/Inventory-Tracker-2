@@ -460,9 +460,9 @@ td{padding:8px 9px;vertical-align:middle}
       </div>
       <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
         <div style="font-size:30px">📄</div>
-        <h3>Tap to upload PDF invoice</h3>
-        <p>Supports digital and scanned PDFs from any supplier</p>
-        <input type="file" id="fileInput" accept=".pdf" style="display:none" onchange="handleFileSelect(event)">
+        <h3>Tap to upload invoice</h3>
+        <p>Supports PDF or Excel invoices, scanned or digital, from any supplier</p>
+        <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls" style="display:none" onchange="handleFileSelect(event)">
       </div>
       <div id="invoiceProcessing" style="display:none;text-align:center;padding:26px;color:#4a6880">
         <div style="font-size:22px;margin-bottom:8px">⏳</div>
@@ -2611,20 +2611,37 @@ async function completeStockTake() {
 const dz=document.getElementById('dropZone');
 dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
 dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
-dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f?.type==='application/pdf')processInvoice(f);});
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f && (f.type==='application/pdf' || /\.(xlsx|xls)$/i.test(f.name)))processInvoice(f);});
 function handleFileSelect(e){const f=e.target.files[0];if(f)processInvoice(f);}
 
 async function processInvoice(file) {
   document.getElementById('invoiceProcessing').style.display='block';
   document.getElementById('invoiceResults').style.display='none';
   document.getElementById('dropZone').style.display='none';
-  setProgress(20,'Reading PDF...');
+  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name);
+  setProgress(20, isSpreadsheet ? 'Reading spreadsheet...' : 'Reading PDF...');
   try {
-    const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-    setProgress(45,'Sending to Claude AI...');
     const itemContext=items.map(i=>{const codes=Object.entries(i.suppliers||{}).map(([s,d])=>`${s}:${d.code_display||cleanCode(d.code||'')}`).filter(x=>x.includes(':')).join(', ');return `ID:${i.id}|${i.name}|MfrCode:${i.mfr_code||''}|SupCodes:${codes}`;}).join('\n');
-    const prompt=`You are analysing a supplier invoice or order confirmation PDF for a plumbing and heating business. Invoices from different suppliers vary a lot in layout — read whatever format this one uses. Extract all line items and match to our database by product code or description. Also find the delivery/site address this was shipped or delivered to (often labelled "Ship To", "Deliver To", "Site Address", or similar — NOT the billing/invoice-to address if they differ).\n\nDatabase:\n${itemContext}\n\nReturn ONLY valid JSON, no markdown:\n{"supplier":"name","invoice_date":"date","invoice_number":"num","delivery_address":"full ship-to/delivery address as a single string, or empty if not found","items":[{"item_id":"firestore_id","matched_name":"name","invoice_description":"desc","invoice_code":"code","quantity":5,"unit_price":12.50,"confidence":"high/medium/low"}],"unmatched":[{"invoice_description":"desc","invoice_code":"code","quantity":2,"unit_price":8.00}]}`;
-    const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},{type:'text',text:prompt}]}]})});
+    const promptIntro = `You are analysing a supplier invoice or order confirmation for a plumbing and heating business. Invoices from different suppliers vary a lot in layout — read whatever format this one uses. Extract all line items and match to our database by product code or description. Also find the delivery/site address this was shipped or delivered to (often labelled "Ship To", "Deliver To", "Site Address", or similar — NOT the billing/invoice-to address if they differ).`;
+    const promptSchema = `\n\nDatabase:\n${itemContext}\n\nReturn ONLY valid JSON, no markdown:\n{"supplier":"name","invoice_date":"date","invoice_number":"num","delivery_address":"full ship-to/delivery address as a single string, or empty if not found","items":[{"item_id":"firestore_id","matched_name":"name","invoice_description":"desc","invoice_code":"code","quantity":5,"unit_price":12.50,"confidence":"high/medium/low"}],"unmatched":[{"invoice_description":"desc","invoice_code":"code","quantity":2,"unit_price":8.00}]}`;
+
+    let messageContent;
+    if (isSpreadsheet) {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheetText = wb.SheetNames.map(name => {
+        const grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+        return `Sheet "${name}":\n` + grid.map(row => row.join('\t')).join('\n');
+      }).join('\n\n');
+      setProgress(45, 'Sending to Claude AI...');
+      messageContent = [{ type: 'text', text: promptIntro + '\n\nHere is the spreadsheet content (tab-separated rows):\n\n' + sheetText + promptSchema }];
+    } else {
+      const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+      setProgress(45,'Sending to Claude AI...');
+      messageContent = [{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},{type:'text',text:promptIntro + promptSchema}];
+    }
+
+    const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:messageContent}]})});
     setProgress(80,'Matching items...');
     const data=await response.json();
     const text=data.content?.find(b=>b.type==='text')?.text||'';
@@ -2822,7 +2839,7 @@ function parseOrderFormGrid(grid) {
     }
   }
   if (headerRowIdx === -1 || cols.description == null || cols.qty == null) {
-    throw new Error('Could not find Description/Qty columns — is this the standard order form?');
+    throw new Error('Could not find Description/Qty columns. This importer only understands the standard Materials Order Form layout — for supplier invoices (PDF or Excel), use the Invoice tab instead.');
   }
   for (let r = headerRowIdx + 1; r < grid.length; r++) {
     const row = grid[r] || [];
