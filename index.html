@@ -455,34 +455,42 @@ td{padding:8px 9px;vertical-align:middle}
   <div class="page" id="page-invoice">
     <div class="invoice-page">
       <div style="margin-bottom:13px">
-        <h2 style="font-size:15px;font-weight:700;color:#e8edf2">Upload Invoice</h2>
-        <p style="font-size:12px;color:#4a6880;margin-top:3px">Upload a supplier PDF — Claude reads it and suggests stock updates</p>
+        <h2 style="font-size:15px;font-weight:700;color:#e8edf2">Log an Invoice</h2>
+        <p style="font-size:12px;color:#4a6880;margin-top:3px">Manually add items from a supplier invoice — no AI involved, no extra cost. Add straight to stock, or create a pending order for an engineer to confirm.</p>
       </div>
-      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        <div style="font-size:30px">📄</div>
-        <h3>Tap to upload invoice</h3>
-        <p>Supports PDF or Excel invoices, scanned or digital, from any supplier</p>
-        <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls" style="display:none" onchange="handleFileSelect(event)">
+
+      <div class="form-row" style="margin-bottom:10px">
+        <div class="field"><label>Supplier</label><input type="text" id="minv-supplier" placeholder="e.g. Wolseley" style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none"></div>
+        <div class="field"><label>Invoice / Ref number (optional)</label><input type="text" id="minv-ref" placeholder="e.g. 108696/1" style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none"></div>
       </div>
-      <div id="invoiceProcessing" style="display:none;text-align:center;padding:26px;color:#4a6880">
-        <div style="font-size:22px;margin-bottom:8px">⏳</div>
-        <div id="processingMsg">Reading invoice...</div>
-        <div class="progress-bar-wrap" style="max-width:180px;margin:10px auto 0"><div class="progress-bar" id="progressBar" style="width:25%"></div></div>
+      <div class="field" style="margin-bottom:10px">
+        <label>Delivery / Site Address (optional)</label>
+        <input type="text" id="minv-address" placeholder="e.g. 10 Barnside Way, Macclesfield SK10 2TZ" style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
       </div>
-      <div id="invoiceResults" style="display:none;margin-top:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:7px">
-          <div>
-            <div style="font-size:13px;font-weight:700;color:#e8edf2" id="invoiceSupplierLabel"></div>
-            <div style="font-size:11px;color:#4a6880;margin-top:1px" id="invoiceDateLabel"></div>
-            <div style="font-size:11px;color:#4cdf8a;margin-top:2px" id="invoiceAddressLabel"></div>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-success" style="padding:5px 11px;font-size:11px" onclick="applyAllInvoice()">✓ Apply All to Stock</button>
-            <button class="btn btn-outline" style="padding:5px 11px;font-size:11px" id="invoiceCreateOrderBtn" onclick="createOrderFromInvoice()">📦 Create Order Record</button>
-            <button class="btn btn-ghost" style="padding:5px 11px;font-size:11px" onclick="cancelInvoice()">Discard</button>
-          </div>
-        </div>
-        <div id="invoiceRowsContainer"></div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Notes (optional)</label>
+        <input type="text" id="minv-notes" placeholder="e.g. Anything worth flagging" style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px">Items on this invoice</div>
+        <button class="btn btn-outline" style="padding:4px 9px;font-size:11px" onclick="addManualInvoiceRow()">+ Add Item</button>
+      </div>
+      <div style="font-size:11px;color:#4a6880;display:grid;grid-template-columns:1fr 80px 28px;gap:4px;margin-bottom:4px;padding:0 2px">
+        <span>Item</span><span style="text-align:center">Qty</span><span></span>
+      </div>
+      <div id="minvItemRows"></div>
+      <p id="minvErr" style="display:none;color:#ff6b6b;font-size:11px;margin-top:6px">Please add at least one item.</p>
+
+      <div class="field" style="margin:14px 0 10px">
+        <label>If adding straight to stock, which location? <span style="font-size:10px;color:#4a6880">(not needed if creating a pending order instead)</span></label>
+        <select id="minv-location" style="width:100%;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none"></select>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <button class="btn btn-success" style="padding:9px 14px;font-size:12px" onclick="applyManualInvoiceToStock()">✓ Add All to Stock</button>
+        <button class="btn btn-outline" style="padding:9px 14px;font-size:12px" onclick="createOrderFromManualInvoice()">📦 Create Order Record (pending)</button>
+        <button class="btn btn-ghost" style="padding:9px 14px;font-size:12px" onclick="clearManualInvoice()">Clear</button>
       </div>
     </div>
   </div>
@@ -1258,7 +1266,6 @@ let storage = null;
 let items = [], users = [], actLog = [];
 let currentUser = null;
 let editId = null, deleteId = null, supModalItemId = null, useStockItemId = null, editUserId = null;
-let invoicePending = [];
 let supEditorData = [];
 let unsubItems = null;
 const PAGE_SIZE = 50;
@@ -1546,6 +1553,7 @@ function showPage(name) {
   if (name === 'job') renderJobPage();
   if (name === 'deliveries') renderDeliveriesPage();
   if (name === 'help') renderHelpPage();
+  if (name === 'invoice') { fillMinvLocationSelect(); renderManualInvoiceRows(); }
 }
 
 // ════════════════════════════════════════
@@ -2607,144 +2615,94 @@ async function completeStockTake() {
 }
 
 // ════════════════════════════════════════
-//  INVOICE UPLOAD
+//  LOG AN INVOICE (manual entry — no AI, no cost)
 // ════════════════════════════════════════
-const dz=document.getElementById('dropZone');
-dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
-dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
-dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f && (f.type==='application/pdf' || /\.(xlsx|xls)$/i.test(f.name)))processInvoice(f);});
-function handleFileSelect(e){const f=e.target.files[0];if(f)processInvoice(f);}
+let manualInvoiceItems = []; // [{itemId, name, qty}]
 
-async function processInvoice(file) {
-  document.getElementById('invoiceProcessing').style.display='block';
-  document.getElementById('invoiceResults').style.display='none';
-  document.getElementById('dropZone').style.display='none';
-  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name);
-  setProgress(20, isSpreadsheet ? 'Reading spreadsheet...' : 'Reading PDF...');
-  try {
-    const itemContext=items.map(i=>{const codes=Object.entries(i.suppliers||{}).map(([s,d])=>`${s}:${d.code_display||cleanCode(d.code||'')}`).filter(x=>x.includes(':')).join(', ');return `ID:${i.id}|${i.name}|MfrCode:${i.mfr_code||''}|SupCodes:${codes}`;}).join('\n');
-    const promptIntro = `You are analysing a supplier invoice or order confirmation for a plumbing and heating business. Invoices from different suppliers vary a lot in layout — read whatever format this one uses. Extract all line items and match to our database by product code or description. Also find the delivery/site address this was shipped or delivered to (often labelled "Ship To", "Deliver To", "Site Address", or similar — NOT the billing/invoice-to address if they differ).`;
-    const promptSchema = `\n\nDatabase:\n${itemContext}\n\nReturn ONLY valid JSON, no markdown:\n{"supplier":"name","invoice_date":"date","invoice_number":"num","delivery_address":"full ship-to/delivery address as a single string, or empty if not found","items":[{"item_id":"firestore_id","matched_name":"name","invoice_description":"desc","invoice_code":"code","quantity":5,"unit_price":12.50,"confidence":"high/medium/low"}],"unmatched":[{"invoice_description":"desc","invoice_code":"code","quantity":2,"unit_price":8.00}]}`;
-
-    let messageContent;
-    if (isSpreadsheet) {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const sheetText = wb.SheetNames.map(name => {
-        const grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
-        return `Sheet "${name}":\n` + grid.map(row => row.join('\t')).join('\n');
-      }).join('\n\n');
-      setProgress(45, 'Sending to Claude AI...');
-      messageContent = [{ type: 'text', text: promptIntro + '\n\nHere is the spreadsheet content (tab-separated rows):\n\n' + sheetText + promptSchema }];
-    } else {
-      const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-      setProgress(45,'Sending to Claude AI...');
-      messageContent = [{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},{type:'text',text:promptIntro + promptSchema}];
-    }
-
-    const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:messageContent}]})});
-    setProgress(80,'Matching items...');
-    const data=await response.json();
-    const text=data.content?.find(b=>b.type==='text')?.text||'';
-    const parsed=JSON.parse(text.replace(/```json|```/g,'').trim());
-    setProgress(100,'Done!');
-    setTimeout(()=>showInvoiceResults(parsed,file.name),400);
-  } catch(err){
-    document.getElementById('invoiceProcessing').style.display='none';
-    document.getElementById('dropZone').style.display='block';
-    document.getElementById('fileInput').value='';
-    toast('Error: '+err.message,'error');
-  }
+function addManualInvoiceRow() {
+  manualInvoiceItems.push({itemId:'', name:'', qty:1});
+  renderManualInvoiceRows();
 }
-function setProgress(pct,msg){document.getElementById('progressBar').style.width=pct+'%';document.getElementById('processingMsg').textContent=msg;}
-let invoiceMeta = {}; // {supplier, invoice_number, invoice_date, delivery_address, unmatched}
-let invoiceAllMatched = []; // full copy of matched items, kept even after individual rows are applied/dismissed
-function showInvoiceResults(parsed,filename) {
-  document.getElementById('invoiceProcessing').style.display='none';
-  document.getElementById('invoiceResults').style.display='block';
-  document.getElementById('invoiceSupplierLabel').textContent=`Invoice: ${parsed.supplier||'Unknown'}${parsed.invoice_number?' · #'+parsed.invoice_number:''}`;
-  document.getElementById('invoiceDateLabel').textContent=`Date: ${parsed.invoice_date||'Not detected'} · ${filename}`;
-  document.getElementById('invoiceAddressLabel').textContent = parsed.delivery_address ? `📍 ${parsed.delivery_address}` : '';
-  invoicePending=parsed.items||[];
-  invoiceAllMatched = [...invoicePending];
-  invoiceMeta = { supplier: parsed.supplier||'', invoice_number: parsed.invoice_number||'', delivery_address: parsed.delivery_address||'', unmatched: parsed.unmatched||[] };
-  let h='';
-  if (!invoicePending.length&&!parsed.unmatched?.length) h='<div class="empty-state">No line items detected.</div>';
-  else {
-    if (invoicePending.length) {
-      h+=`<div style="font-size:10px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Matched (${invoicePending.length})</div>`;
-      invoicePending.forEach((inv,idx)=>{
-        const item=items.find(i=>i.id==inv.item_id);
-        const confCol={high:'#22c55e',medium:'#f59e0b',low:'#ef4444'}[inv.confidence]||'#6b8fad';
-        h+=`<div class="ir-row" id="inv-row-${idx}">
-          <div style="flex:1"><div class="ir-item">${inv.matched_name}</div>
-          <div class="ir-meta">"${inv.invoice_description}" · ${inv.invoice_code||'—'} · <span style="color:${confCol}">${inv.confidence}</span></div>
-          ${item?`<div class="ir-meta">Current total: ${totalQty(item)}</div>`:''}
-          </div>
-          <div style="text-align:right;white-space:nowrap"><div class="ir-add">+${inv.quantity}</div><div style="font-size:10px;color:#4a6880">£${inv.unit_price?.toFixed(2)||'?'}</div></div>
-          <select id="inv-loc-${idx}" style="padding:4px 6px;background:#1a2840;border:1px solid #2a4060;border-radius:5px;color:#e8edf2;font-size:11px">
-            ${LOCATIONS.map(l=>`<option value="${l}"${l===LOCATIONS[0]?' selected':''}>${l}</option>`).join('')}
-          </select>
-          <div style="display:flex;gap:4px">
-            <button class="btn btn-success" style="padding:4px 8px;font-size:11px" onclick="applyInvoiceRow(${idx})">✓</button>
-            <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="dismissInvoiceRow(${idx})">✕</button>
-          </div>
-        </div>`;
-      });
-    }
-    if (parsed.unmatched?.length) {
-      h+=`<div style="font-size:10px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 7px">Unmatched (${parsed.unmatched.length})</div>`;
-      parsed.unmatched.forEach(u=>{h+=`<div class="ir-row" style="opacity:.55"><div style="flex:1"><div class="ir-item">${u.invoice_description}</div><div class="ir-meta">Code: ${u.invoice_code||'—'} · Qty: ${u.quantity}</div></div><div style="font-size:11px;color:#4a6880">No match</div></div>`;});
-    }
+
+function renderManualInvoiceRows() {
+  const el = document.getElementById('minvItemRows');
+  if (!manualInvoiceItems.length) {
+    el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:12px 0">No items yet — tap + Add Item</div>';
+    return;
   }
-  document.getElementById('invoiceRowsContainer').innerHTML=h;
+  el.innerHTML = manualInvoiceItems.map((row, i) => `
+    <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:4px;margin-bottom:6px;align-items:center">
+      <select onchange="minvItemSelect(${i},this.value)" style="padding:7px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+        <option value="">Select item...</option>
+        ${items.map(it=>`<option value="${it.id}"${it.id===row.itemId?' selected':''}>${it.name}</option>`).join('')}
+      </select>
+      <input type="number" min="1" value="${row.qty}" oninput="manualInvoiceItems[${i}].qty=Math.max(1,parseInt(this.value)||1)"
+        style="padding:7px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none;text-align:center">
+      <button onclick="manualInvoiceItems.splice(${i},1);renderManualInvoiceRows()" style="background:#3a1010;border:none;color:#ff6b6b;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:12px">✕</button>
+    </div>`).join('');
 }
-async function applyInvoiceRow(idx) {
-  const inv=invoicePending[idx]; if(!inv) return;
-  const item=items.find(i=>i.id==inv.item_id); if(!item) return;
-  const locSel = document.getElementById('inv-loc-'+idx);
-  const toLoc = locSel ? locSel.value : LOCATIONS[0];
-  const locs = getLocations(item);
-  const oldVal = locs[toLoc]||0, newVal = oldVal + inv.quantity;
-  const newLocs = {...locs, [toLoc]: newVal};
+
+function minvItemSelect(i, itemId) {
+  const item = items.find(it=>it.id===itemId);
+  manualInvoiceItems[i].itemId = itemId;
+  manualInvoiceItems[i].name = item?.name||'';
+}
+
+function fillMinvLocationSelect() {
+  const sel = document.getElementById('minv-location');
+  if (sel) sel.innerHTML = LOCATIONS.map(l=>`<option value="${l}">${l}</option>`).join('');
+}
+
+function clearManualInvoice() {
+  manualInvoiceItems = [];
+  ['minv-supplier','minv-ref','minv-address','minv-notes'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  fillMinvLocationSelect();
+  renderManualInvoiceRows();
+  document.getElementById('minvErr').style.display = 'none';
+}
+
+async function applyManualInvoiceToStock() {
+  const validItems = manualInvoiceItems.filter(r=>r.itemId&&r.qty>0);
+  if (!validItems.length) { document.getElementById('minvErr').style.display='block'; return; }
+  document.getElementById('minvErr').style.display='none';
+  const toLoc = document.getElementById('minv-location').value;
+  const supplier = document.getElementById('minv-supplier').value.trim();
+  const ref = document.getElementById('minv-ref').value.trim();
   setSync('busy');
   try {
-    await db.collection('items').doc(inv.item_id).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
-    await logAction('invoice',`Invoice: ${item.name}`,`${currentUser.name} added ${inv.quantity} to ${toLoc} via invoice · ${oldVal}→${newVal}`);
+    for (const row of validItems) {
+      const item = items.find(i=>i.id===row.itemId); if (!item) continue;
+      const locs = getLocations(item);
+      const oldVal = locs[toLoc]||0, newVal = oldVal + Number(row.qty);
+      await db.collection('items').doc(row.itemId).update({ locations: {...locs, [toLoc]: newVal}, qty: firebase.firestore.FieldValue.delete() });
+      await logAction('invoice', `Invoice: ${item.name}`, `${currentUser.name} added ${row.qty} to ${toLoc}${supplier?' · Supplier: '+supplier:''}${ref?' · Ref: '+ref:''} · ${oldVal}→${newVal}`);
+    }
     setSync('ok');
-  } catch(e){ setSync('err'); }
-  document.getElementById('inv-row-'+idx)?.remove();
-  invoicePending[idx]=null;
-  toast(`+${inv.quantity} added to ${item.name} (${toLoc})`,'success');
+    toast(`Added ${validItems.length} item${validItems.length!==1?'s':''} to ${toLoc}`, 'success');
+    clearManualInvoice();
+  } catch(e) { setSync('err'); toast('Failed: '+e.message, 'error'); }
 }
-function dismissInvoiceRow(idx){document.getElementById('inv-row-'+idx)?.remove();invoicePending[idx]=null;}
-async function applyAllInvoice(){let c=0;for(let i=0;i<invoicePending.length;i++){if(invoicePending[i]){await applyInvoiceRow(i);c++;}}toast(`Applied ${c} updates`,'success');}
-function cancelInvoice(){invoicePending=[];invoiceAllMatched=[];invoiceMeta={};document.getElementById('invoiceResults').style.display='none';document.getElementById('dropZone').style.display='block';document.getElementById('fileInput').value='';}
 
-function createOrderFromInvoice() {
-  const matched = invoiceAllMatched.filter(inv => inv && inv.item_id && items.find(i => i.id == inv.item_id));
-  if (!matched.length && !invoiceMeta.unmatched?.length) { toast('No items to add to an order', 'error'); return; }
+function createOrderFromManualInvoice() {
+  const validItems = manualInvoiceItems.filter(r=>r.itemId&&r.qty>0);
+  if (!validItems.length) { document.getElementById('minvErr').style.display='block'; return; }
+  document.getElementById('minvErr').style.display='none';
+
+  const supplier = document.getElementById('minv-supplier').value.trim();
+  const ref = document.getElementById('minv-ref').value.trim();
+  const address = document.getElementById('minv-address').value.trim();
+  const notes = document.getElementById('minv-notes').value.trim();
 
   openNewDelivery();
-  deliveryItemRowData = matched.map(inv => ({ itemId: inv.item_id, name: inv.matched_name, qty: inv.quantity }));
+  deliveryItemRowData = validItems.map(r => ({ itemId: r.itemId, name: r.name, qty: r.qty }));
   renderDeliveryItemRows();
+  document.getElementById('del-supplier').value = supplier;
+  document.getElementById('del-customer-address').value = address;
+  document.getElementById('del-notes').value = `${ref ? 'Invoice #' + ref + ' — ' : ''}${notes}`.trim();
 
-  document.getElementById('del-customer-address').value = invoiceMeta.delivery_address || '';
-  document.getElementById('del-supplier').value = invoiceMeta.supplier || '';
-
-  let notes = `Imported from invoice${invoiceMeta.invoice_number ? ' #' + invoiceMeta.invoice_number : ''}`;
-  if (invoiceMeta.unmatched?.length) {
-    notes += ` — no stock match, add manually: ${invoiceMeta.unmatched.map(u => `${u.invoice_description} ×${u.quantity}`).join(', ')}`;
-  }
-  document.getElementById('del-notes').value = notes;
-
-  if (!invoiceMeta.delivery_address) {
-    toast('No delivery address detected on this invoice — please fill it in before saving', 'error');
-  } else {
-    toast(`Order pre-filled with ${matched.length} item${matched.length !== 1 ? 's' : ''} — review and save`, 'success');
-  }
+  clearManualInvoice();
+  toast(`Order pre-filled with ${validItems.length} item${validItems.length!==1?'s':''} — review and save`, 'success');
 }
-
 
 // ════════════════════════════════════════
 //  IMPORT MATERIALS ORDER FORM
@@ -4803,13 +4761,12 @@ const HELP_GUIDES = [
     ]
   },
   {
-    icon: '🧾', title: 'Uploading a Supplier Invoice',
+    icon: '🧾', title: 'Logging a Supplier Invoice',
     steps: [
       { text: 'Open the Invoice tab' },
-      { text: 'Tap to upload the supplier PDF' },
-      { text: 'Wait while Claude reads the invoice', sub: 'Takes a few seconds' },
-      { text: 'Check the matched items look right', sub: 'Quantities and locations can be adjusted before applying' },
-      { text: 'Tap "✓ Apply All"', decision: 'Any items shown as "Unmatched"? That means the invoice wording doesn\'t match the item name in the app — add those manually via Add Item or Use Stock.' }
+      { text: 'Fill in the supplier, invoice number, and site address if relevant', sub: 'All optional except the items' },
+      { text: 'Add each item from the invoice with its quantity', sub: 'Tap "+ Add Item" for each line' },
+      { text: 'Choose what happens next', decision: 'Sure it\'s correct? Pick a location and tap "Add All to Stock". Want an engineer to double-check first? Tap "Create Order Record" instead — it\'ll sit pending until confirmed.' }
     ]
   },
   {
