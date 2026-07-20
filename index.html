@@ -4373,12 +4373,14 @@ async function editDelivery(id) {
 
 // ── Confirm Collection ──
 let confirmColExtras = []; // [{itemId, name, qty}]
+let currentConfirmItems = []; // the current order's items — read directly instead of scraping the DOM for names
 
 async function openConfirmCollection(id) {
   try {
     const doc = await db.collection('deliveries').doc(id).get();
     const d = doc.data();
     currentConfirmDeliveryId = id;
+    currentConfirmItems = d.items || [];
     confirmColExtras = [];
 
     const meta = document.getElementById('confirmColMeta');
@@ -4401,7 +4403,7 @@ async function openConfirmCollection(id) {
     document.getElementById('confirmColExtraRows').innerHTML = '';
 
     // Build location rows (called again when qtys change)
-    rebuildColLocationRows(d.items);
+    rebuildColLocationRows();
 
     // Collected-by dropdown
     const engSel = document.getElementById('confirmColEngineer');
@@ -4413,24 +4415,17 @@ async function openConfirmCollection(id) {
   } catch(e) { toast('Could not load order: '+e.message,'error'); }
 }
 
-function rebuildColLocationRows(baseItems) {
-  // Use stored order items if not passed
-  if (!baseItems) {
-    // Re-read from qty inputs using currentConfirmDeliveryId — just rebuild from existing inputs
-    const existing = document.querySelectorAll('[id^="colqty-"]');
-    // We'll just re-render the location section from scratch using current qty values
-  }
+function rebuildColLocationRows() {
   const itemsEl = document.getElementById('confirmColItems');
-  // Gather order items with current qty values
-  const qtyInputs = document.querySelectorAll('[id^="colqty-"]');
+  // Gather order items with current qty values, reading names from the stored
+  // order data (currentConfirmItems) rather than scraping the DOM — the old
+  // approach broke depending on exact element nesting and threw "null is not
+  // an object" errors.
   let orderRows = [];
-  qtyInputs.forEach((inp, i) => {
-    const qty = parseInt(inp.value)||0;
-    if (qty > 0) {
-      // Get item name from the sibling text
-      const name = inp.closest('div').querySelector('div').textContent;
-      orderRows.push({i, qty, name});
-    }
+  currentConfirmItems.forEach((it, i) => {
+    const inp = document.getElementById('colqty-'+i);
+    const qty = inp ? (parseInt(inp.value)||0) : 0;
+    if (qty > 0) orderRows.push({i, qty, name: it.name});
   });
 
   // Combine order items + extras for location assignment
