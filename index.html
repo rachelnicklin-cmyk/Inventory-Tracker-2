@@ -753,6 +753,11 @@ td{padding:8px 9px;vertical-align:middle}
       <div id="odNeedsConfirmRows" style="margin-bottom:16px"></div>
     </div>
 
+    <div id="odNewFromExcelSection" style="display:none">
+      <div style="font-size:10px;font-weight:700;color:#4cdf8a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">🆕 New products found only in Excel — will be added to the app</div>
+      <div id="odNewFromExcelRows" style="margin-bottom:16px"></div>
+    </div>
+
     <div style="font-size:10px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Will update from Excel → App</div>
     <div id="odToAppRows" style="max-height:180px;overflow-y:auto;margin-bottom:16px"></div>
 
@@ -3606,7 +3611,16 @@ async function computeOneDriveSyncData(quiet) {
       }
     });
 
-    odSyncData = { token, cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, nextRowIndex: grid.length };
+    // Excel rows nobody's claimed yet — either as an existing barcode link,
+    // or as a candidate match above — are genuinely new products that only
+    // exist in Excel so far. These were previously falling through the
+    // cracks entirely; now they get added to the app.
+    const claimedRowIndexes = new Set();
+    excelRows.forEach(er => { if (er.appBarcode) claimedRowIndexes.add(er.rowIndex); });
+    needsConfirmation.forEach(nc => claimedRowIndexes.add(nc.excelRow.rowIndex));
+    const newFromExcel = excelRows.filter(er => !claimedRowIndexes.has(er.rowIndex)).map(er => ({ ...er, include: true }));
+
+    odSyncData = { token, cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel, nextRowIndex: grid.length };
     return true;
   } catch (e) {
     if (!quiet) toast('Sync failed: ' + e.message, 'error');
@@ -3634,8 +3648,8 @@ async function autoSyncOneDrive(reasonLabel) {
   if (!odConfig || !odConfig.clientId) return;
   const ok = await computeOneDriveSyncData(true);
   if (!ok) return;
-  const { toApplyToApp, toApplyToExcel, needsConfirmation } = odSyncData;
-  if (toApplyToApp.length || toApplyToExcel.length || needsConfirmation.length) {
+  const { toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
+  if (toApplyToApp.length || toApplyToExcel.length || needsConfirmation.length || newFromExcel.length) {
     renderOneDriveSyncReview();
     document.getElementById('odSyncReviewModal').classList.add('open');
     toast(`Auto-sync (${reasonLabel}) found changes to review`, 'success');
@@ -3643,12 +3657,28 @@ async function autoSyncOneDrive(reasonLabel) {
 }
 
 function renderOneDriveSyncReview() {
-  const { toApplyToApp, toApplyToExcel, needsConfirmation } = odSyncData;
+  const { toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
   document.getElementById('odReviewSummary').innerHTML = `
     <span style="background:#0f1e30;color:#6b8fad;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${toApplyToApp.length} update${toApplyToApp.length !== 1 ? 's' : ''} from Excel</span>
     <span style="background:#0f1e30;color:#6b8fad;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${toApplyToExcel.length} to send to Excel</span>
+    ${newFromExcel.length ? `<span style="background:#0f2e1a;color:#4cdf8a;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">🆕 ${newFromExcel.length} new from Excel</span>` : ''}
     ${needsConfirmation.length ? `<span style="background:#2e2410;color:#f0a020;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">⚠ ${needsConfirmation.length} need confirming</span>` : ''}
   `;
+
+  const newSection = document.getElementById('odNewFromExcelSection');
+  if (newFromExcel.length) {
+    newSection.style.display = 'block';
+    document.getElementById('odNewFromExcelRows').innerHTML = newFromExcel.map((er, i) => `
+      <div style="background:#0f1e30;border:1px solid #1a4a2a;border-radius:7px;padding:9px 11px;margin-bottom:7px">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+          <input type="checkbox" checked onchange="odSyncData.newFromExcel[${i}].include=this.checked">
+          <div>
+            <div style="font-size:12px;color:#e8edf2">${er.description}</div>
+            <div style="font-size:10px;color:#4a6880;margin-top:2px">${er.category || 'Uncategorised'}${er.mfrCode ? ' · Mfr: ' + er.mfrCode : ''}</div>
+          </div>
+        </label>
+      </div>`).join('');
+  } else newSection.style.display = 'none';
 
   const confSection = document.getElementById('odNeedsConfirmSection');
   if (needsConfirmation.length) {
@@ -3675,14 +3705,32 @@ function renderOneDriveSyncReview() {
 }
 
 async function applyOneDriveSync() {
-  const { token, cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation } = odSyncData;
+  if (!odSyncData) { toast('Sync data has expired — tap "Sync Now" again first', 'error'); return; }
   setSync('busy');
   try {
+    const { cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
+    const token = await getGraphToken(); // fresh token — the one from the initial check may have gone stale while reviewing
     // Excel → App updates (barcode-matched, excel side changed)
     for (const { item, excelRow } of toApplyToApp) {
       const newSuppliers = {};
       Object.entries(excelRow.supplierData).forEach(([s, d]) => { newSuppliers[s] = { code: d.code, price: d.price, min_order: item.suppliers?.[s]?.min_order || '' }; });
       await db.collection('items').doc(item.id).update({ suppliers: newSuppliers, syncedToMaster: true });
+    }
+
+    // Brand new products found only in Excel — create them in the app, then
+    // write the freshly-generated barcode back into that Excel row so it's
+    // permanently linked from here on.
+    for (const er of newFromExcel) {
+      if (!er.include) continue;
+      const barcode = generateBarcodeValue();
+      const suppliers = {};
+      Object.entries(er.supplierData).forEach(([s, d]) => { suppliers[s] = { code: d.code, price: d.price, min_order: '' }; });
+      await db.collection('items').add({
+        name: er.description, category: er.category || 'Uncategorised', mfr_code: er.mfrCode || '',
+        barcode, locations: {}, min_qty: 0, notes: 'Added from OneDrive sync', suppliers,
+        syncedToMaster: true, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      await odWriteCell(token, er.rowIndex, cols.appBarcode, barcode);
     }
 
     // Confirmed name-matches: link via barcode, then treat as App → Excel (app is authoritative for a first link)
@@ -3709,7 +3757,7 @@ async function applyOneDriveSync() {
 
     await db.collection('config').doc('onedrive').update({ lastSyncAt: Date.now() });
     odConfig.lastSyncAt = Date.now();
-    await logAction('edit', 'OneDrive sync completed', `${currentUser?.name || 'Someone'} synced ${toApplyToApp.length} update(s) from Excel and ${toApplyToExcel.length} item(s) to Excel.`);
+    await logAction('edit', 'OneDrive sync completed', `${currentUser?.name || 'Someone'} synced ${toApplyToApp.length} update(s) from Excel, added ${newFromExcel.filter(er=>er.include).length} new item(s) from Excel, and sent ${toApplyToExcel.length} item(s) to Excel.`);
     setSync('ok');
     closeModal('odSyncReviewModal');
     renderOneDriveStatus();
