@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f1923">
 <title>Rachel's Materials</title>
@@ -3478,32 +3479,67 @@ async function resolveShareLink(url, token) {
   return { driveId: data.parentReference.driveId, itemId: data.id };
 }
 
-async function graphFetch(path, token, options = {}) {
-  const resp = await fetch(`https://graph.microsoft.com/v1.0${path}`, { ...options, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) } });
-  if (!resp.ok) { const body = await resp.text(); throw new Error(`Graph API error ${resp.status}: ${body.slice(0, 200)}`); }
-  return resp.status === 204 ? null : resp.json();
+function odSleep(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+async function graphFetch(path, token, options = {}, sessionId) {
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (sessionId) headers['workbook-session-id'] = sessionId;
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const resp = await fetch(`https://graph.microsoft.com/v1.0${path}`, { ...options, headers });
+    if (resp.status === 429) {
+      // Rate-limited — Microsoft tells us how long to wait via Retry-After.
+      // Back off and try again rather than failing the whole sync outright.
+      const retryAfter = parseFloat(resp.headers.get('Retry-After')) || 2;
+      if (attempt === maxAttempts) throw new Error(`Graph API is rate-limiting requests (429) — even after ${maxAttempts} retries. Try again in a minute, or sync fewer items at once.`);
+      await odSleep((retryAfter * 1000) + 300);
+      continue;
+    }
+    if (!resp.ok) { const body = await resp.text(); throw new Error(`Graph API error ${resp.status}: ${body.slice(0, 200)}`); }
+    return resp.status === 204 ? null : resp.json();
+  }
+}
+
+// A persistent Excel session means all the reads/writes in one sync share a
+// single calculation session on Microsoft's side, instead of spinning up
+// (and tearing down) a brand new one for every single request — this is
+// what was causing the rate-limit errors when syncing more than a handful
+// of rows at once.
+async function odCreateSession(token) {
+  try {
+    const resp = await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/createSession`, token, { method: 'POST', body: JSON.stringify({ persistChanges: true }) });
+    return resp?.id || null;
+  } catch (e) { console.warn('Could not create Excel session, continuing without one:', e.message); return null; }
+}
+async function odCloseSession(token, sessionId) {
+  if (!sessionId) return;
+  try { await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/closeSession`, token, { method: 'POST' }, sessionId); }
+  catch (e) { /* best-effort cleanup, fine if this fails */ }
 }
 
 function odColLetter(n) { let s = ''; n++; while (n > 0) { s = String.fromCharCode(65 + ((n - 1) % 26)) + s; n = Math.floor((n - 1) / 26); } return s; }
 
-async function odReadWorksheet(token) {
-  const range = await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/usedRange(valuesOnly=true)`, token);
+async function odReadWorksheet(token, sessionId) {
+  const range = await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/usedRange(valuesOnly=true)`, token, {}, sessionId);
   return range.values || [];
 }
 
-async function odWriteRow(token, rowIndex0based, values) {
+async function odWriteRow(token, rowIndex0based, values, sessionId) {
   const addr = `A${rowIndex0based + 1}:${odColLetter(values.length - 1)}${rowIndex0based + 1}`;
-  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [values] }) });
+  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [values] }) }, sessionId);
+  await odSleep(250); // small gap between writes — keeps us comfortably under Graph's rate limit
 }
 
-async function odWriteCell(token, rowIndex0based, colIndex0based, value) {
+async function odWriteCell(token, rowIndex0based, colIndex0based, value, sessionId) {
   const addr = `${odColLetter(colIndex0based)}${rowIndex0based + 1}`;
-  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [[value]] }) });
+  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [[value]] }) }, sessionId);
+  await odSleep(250);
 }
 
-async function odAppendRow(token, values, nextRowIndex0based) {
+async function odAppendRow(token, values, nextRowIndex0based, sessionId) {
   const addr = `A${nextRowIndex0based + 1}:${odColLetter(values.length - 1)}${nextRowIndex0based + 1}`;
-  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [values] }) });
+  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [values] }) }, sessionId);
+  await odSleep(250);
 }
 
 function odRowToValues(row, totalCols, cols) {
@@ -3534,9 +3570,11 @@ let odSyncData = null; // working state between syncOneDriveNow() and applyOneDr
 // decides how loudly to complain about a failure.
 async function computeOneDriveSyncData(quiet) {
   if (!odConfig) { if (!quiet) toast('Not connected yet', 'error'); return false; }
+  let sessionId = null, token = null;
   try {
-    const token = await getGraphToken();
-    const grid = await odReadWorksheet(token);
+    token = await getGraphToken();
+    sessionId = await odCreateSession(token);
+    const grid = await odReadWorksheet(token, sessionId);
     if (!grid.length) throw new Error('Spreadsheet appears to be empty');
 
     const headerRaw = grid[0];
@@ -3566,7 +3604,7 @@ async function computeOneDriveSyncData(quiet) {
       cols.appBarcode = totalCols;
       totalCols += 1;
       const newHeader = [...headerRaw, OD_APP_BARCODE_HEADER];
-      await odWriteRow(token, 0, newHeader);
+      await odWriteRow(token, 0, newHeader, sessionId);
     }
 
     const excelRows = [];
@@ -3621,8 +3659,10 @@ async function computeOneDriveSyncData(quiet) {
     const newFromExcel = excelRows.filter(er => !claimedRowIndexes.has(er.rowIndex)).map(er => ({ ...er, include: true }));
 
     odSyncData = { token, cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel, nextRowIndex: grid.length };
+    await odCloseSession(token, sessionId);
     return true;
   } catch (e) {
+    if (token) await odCloseSession(token, sessionId).catch(() => {});
     if (!quiet) toast('Sync failed: ' + e.message, 'error');
     else console.warn('Auto-sync skipped:', e.message);
     return false;
@@ -3707,9 +3747,11 @@ function renderOneDriveSyncReview() {
 async function applyOneDriveSync() {
   if (!odSyncData) { toast('Sync data has expired — tap "Sync Now" again first', 'error'); return; }
   setSync('busy');
+  let sessionId = null, token = null;
   try {
     const { cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
-    const token = await getGraphToken(); // fresh token — the one from the initial check may have gone stale while reviewing
+    token = await getGraphToken(); // fresh token — the one from the initial check may have gone stale while reviewing
+    sessionId = await odCreateSession(token); // one shared session for every write below, instead of one per request
     // Excel → App updates (barcode-matched, excel side changed)
     for (const { item, excelRow } of toApplyToApp) {
       const newSuppliers = {};
@@ -3730,14 +3772,14 @@ async function applyOneDriveSync() {
         barcode, locations: {}, min_qty: 0, notes: 'Added from OneDrive sync', suppliers,
         syncedToMaster: true, createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      await odWriteCell(token, er.rowIndex, cols.appBarcode, barcode);
+      await odWriteCell(token, er.rowIndex, cols.appBarcode, barcode, sessionId);
     }
 
     // Confirmed name-matches: link via barcode, then treat as App → Excel (app is authoritative for a first link)
     let nextRow = odSyncData.nextRowIndex;
     for (const nc of needsConfirmation) {
       if (!nc.confirmed) continue;
-      await odWriteCell(token, nc.excelRow.rowIndex, cols.appBarcode, nc.item.barcode || '');
+      await odWriteCell(token, nc.excelRow.rowIndex, cols.appBarcode, nc.item.barcode || '', sessionId);
       toApplyToExcel.push({ item: nc.item, rowIndex: nc.excelRow.rowIndex, isNew: false });
     }
     // Rejected matches (or excel already taken) fall back to being genuinely new rows
@@ -3750,21 +3792,26 @@ async function applyOneDriveSync() {
     for (const r of toApplyToExcel) {
       const rowData = { category: r.item.category, description: r.item.name, mfrCode: r.item.mfr_code, appBarcode: r.item.barcode, supplierData: r.item.suppliers || {} };
       const values = odRowToValues(rowData, totalCols, cols);
-      if (r.isNew) { await odAppendRow(token, values, nextRow); nextRow++; }
-      else await odWriteRow(token, r.rowIndex, values);
+      if (r.isNew) { await odAppendRow(token, values, nextRow, sessionId); nextRow++; }
+      else await odWriteRow(token, r.rowIndex, values, sessionId);
       await db.collection('items').doc(r.item.id).update({ syncedToMaster: true });
     }
 
     await db.collection('config').doc('onedrive').update({ lastSyncAt: Date.now() });
     odConfig.lastSyncAt = Date.now();
     await logAction('edit', 'OneDrive sync completed', `${currentUser?.name || 'Someone'} synced ${toApplyToApp.length} update(s) from Excel, added ${newFromExcel.filter(er=>er.include).length} new item(s) from Excel, and sent ${toApplyToExcel.length} item(s) to Excel.`);
+    await odCloseSession(token, sessionId);
     setSync('ok');
     closeModal('odSyncReviewModal');
     renderOneDriveStatus();
     updateNewItemsBadge();
     toast('Sync complete', 'success');
     await reloadData();
-  } catch (e) { setSync('err'); toast('Sync failed while applying: ' + e.message, 'error'); }
+  } catch (e) {
+    if (token) await odCloseSession(token, sessionId).catch(() => {});
+    setSync('err');
+    toast('Sync failed while applying: ' + e.message, 'error');
+  }
 }
 
 
