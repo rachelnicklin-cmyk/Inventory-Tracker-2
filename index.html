@@ -621,7 +621,7 @@ td{padding:8px 9px;vertical-align:middle}
         <h2 style="font-size:15px;font-weight:700;color:#e8edf2">🚚 Deliveries &amp; Collections</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button id="importOrderFormBtn" class="btn btn-outline" style="padding:6px 12px;font-size:12px" onclick="openImportOrderForm()" title="For Rachel's own Materials Order Form spreadsheet only — NOT for supplier invoices">📥 Import Materials Order Form (spreadsheet only)</button>
-          <button id="newOrderBtn" class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="openNewDelivery()">+ New Order</button>
+          <button id="newOrderBtn" class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="openNewDelivery();autoSyncOneDrive('before order form')">+ New Order</button>
         </div>
       </div>
 
@@ -2002,6 +2002,7 @@ function openAdd() {
   document.getElementById('dupItemWarning').style.display='none';
   document.getElementById('itemErr').style.display='none';
   document.getElementById('itemModal').classList.add('open');
+  autoSyncOneDrive('before adding item');
 }
 function openEdit(id) {
   const item = items.find(i => i.id===id); editId=id;
@@ -2089,6 +2090,7 @@ async function saveItem() {
     setSync('ok');
     closeModal('itemModal');
     toast(editId ? 'Item updated' : 'Item added', 'success');
+    if (!editId) autoSyncOneDrive('after adding item');
   } catch(e) { setSync('err'); toast('Save failed: '+e.message, 'error'); }
   document.getElementById('saveItemBtn').disabled = false;
 }
@@ -2846,6 +2848,7 @@ function openImportOrderForm() {
   document.getElementById('oformProcessing').style.display = 'none';
   document.getElementById('oformResults').style.display = 'none';
   document.getElementById('importOrderFormModal').classList.add('open');
+  autoSyncOneDrive('before order form'); // fire-and-forget — surfaces its own review modal only if there's something to check
 }
 
 function oformSetProgress(pct, msg) {
@@ -3421,8 +3424,10 @@ async function connectOneDrive() {
     const loginResp = await msalInstance.loginPopup({ scopes: OD_GRAPH_SCOPES });
     odAccount = loginResp.account;
 
-    const token = await getGraphToken();
-    const shareInfo = await resolveShareLink(fileLink, token);
+    // Use the token we just got back from sign-in directly — getGraphToken()
+    // is for later syncs and expects odConfig to already exist, which it
+    // doesn't yet on this very first connection.
+    const shareInfo = await resolveShareLink(fileLink, loginResp.accessToken);
 
     odConfig = { clientId, tenantId, fileLink, driveId: shareInfo.driveId, itemId: shareInfo.itemId, worksheetName: 'Sheet1', lastSyncAt: null };
     await db.collection('config').doc('onedrive').set(odConfig);
@@ -3519,9 +3524,11 @@ async function disconnectOneDrive() {
 
 let odSyncData = null; // working state between syncOneDriveNow() and applyOneDriveSync()
 
-async function syncOneDriveNow() {
-  if (!odConfig) { toast('Not connected yet', 'error'); return; }
-  setSync('busy');
+// Does the actual fetch + match work, without touching any UI. Returns true
+// on success (results land in odSyncData) or false if it failed — the caller
+// decides how loudly to complain about a failure.
+async function computeOneDriveSyncData(quiet) {
+  if (!odConfig) { if (!quiet) toast('Not connected yet', 'error'); return false; }
   try {
     const token = await getGraphToken();
     const grid = await odReadWorksheet(token);
@@ -3600,12 +3607,38 @@ async function syncOneDriveNow() {
     });
 
     odSyncData = { token, cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, nextRowIndex: grid.length };
-    renderOneDriveSyncReview();
-    setSync('ok');
-    document.getElementById('odSyncReviewModal').classList.add('open');
+    return true;
   } catch (e) {
-    setSync('err');
-    toast('Sync failed: ' + e.message, 'error');
+    if (!quiet) toast('Sync failed: ' + e.message, 'error');
+    else console.warn('Auto-sync skipped:', e.message);
+    return false;
+  }
+}
+
+// Manual "Sync Now" button — always shows the review modal, even if there's
+// nothing to do, so tapping it always gives clear feedback.
+async function syncOneDriveNow() {
+  setSync('busy');
+  const ok = await computeOneDriveSyncData(false);
+  if (!ok) { setSync('err'); return; }
+  setSync('ok');
+  renderOneDriveSyncReview();
+  document.getElementById('odSyncReviewModal').classList.add('open');
+}
+
+// Runs quietly at key moments (before an order form, before/after adding an
+// item). Skips entirely if OneDrive isn't connected, and only surfaces the
+// review modal if there's actually something worth a look — otherwise it's
+// invisible, so it never gets in the way of what the person is trying to do.
+async function autoSyncOneDrive(reasonLabel) {
+  if (!odConfig || !odConfig.clientId) return;
+  const ok = await computeOneDriveSyncData(true);
+  if (!ok) return;
+  const { toApplyToApp, toApplyToExcel, needsConfirmation } = odSyncData;
+  if (toApplyToApp.length || toApplyToExcel.length || needsConfirmation.length) {
+    renderOneDriveSyncReview();
+    document.getElementById('odSyncReviewModal').classList.add('open');
+    toast(`Auto-sync (${reasonLabel}) found changes to review`, 'success');
   }
 }
 
