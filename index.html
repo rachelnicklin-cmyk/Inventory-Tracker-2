@@ -5398,7 +5398,7 @@ closeModal = function(id) {
 // Same content used both for the in-app Help tab and the printed poster.
 const HELP_GUIDES = [
   {
-    icon: '🚚', title: 'Receiving a Delivery / Collection',
+    icon: '🚚', title: 'Receiving a Delivery / Collection', role: 'engineer',
     steps: [
       { text: 'Open the Deliveries tab', sub: 'Find the order under "Awaiting Collection"' },
       { text: 'Tap "Confirm Collection" on that order' },
@@ -5410,7 +5410,7 @@ const HELP_GUIDES = [
     ]
   },
   {
-    icon: '🔧', title: 'Using Stock On a Job (Job Mode)',
+    icon: '🔧', title: 'Using Stock On a Job (Job Mode)', role: 'engineer',
     steps: [
       { text: 'Open the Job tab' },
       { text: 'Tap "Start New Job"', sub: 'Or "Resume Draft" if you already started one' },
@@ -5421,7 +5421,7 @@ const HELP_GUIDES = [
     ]
   },
   {
-    icon: '📷', title: 'Scanning a Barcode',
+    icon: '📷', title: 'Scanning a Barcode', role: 'engineer',
     steps: [
       { text: 'Open the Scan tab' },
       { text: 'Tap "Start Camera"' },
@@ -5430,7 +5430,7 @@ const HELP_GUIDES = [
     ]
   },
   {
-    icon: '🧾', title: 'Logging a Supplier Invoice',
+    icon: '🧾', title: 'Logging a Supplier Invoice', role: 'both',
     steps: [
       { text: 'Open the Invoice tab' },
       { text: 'Fill in the supplier, invoice number, and site address if relevant', sub: 'All optional except the items' },
@@ -5439,7 +5439,7 @@ const HELP_GUIDES = [
     ]
   },
   {
-    icon: '📋', title: 'Doing a Stock Take',
+    icon: '📋', title: 'Doing a Stock Take', role: 'both',
     steps: [
       { text: 'Open the Stock Take tab' },
       { text: 'Tap "Start / Continue Stock Take"' },
@@ -5449,22 +5449,93 @@ const HELP_GUIDES = [
     ]
   },
   {
-    icon: '⚠️', title: 'Item Missing a Barcode or Price',
+    icon: '⚠️', title: 'Item Missing a Barcode or Price', role: 'admin',
     steps: [
       { text: 'Go to Admin > Inventory', sub: 'Use the "⚠ Missing barcode" filter to find affected items' },
       { text: 'Open the item', decision: 'No barcode? Tap "Generate" on the item\'s barcode field, then print a label from "🖨️ Print Labels".' },
       { text: 'Check Supplier Prices & Codes', decision: 'No price listed? Add the supplier, their code, and price under "Supplier Prices & Codes" so the reorder list and invoice matching both work properly.' },
       { text: 'Save the item' }
     ]
+  },
+  {
+    icon: '📝', title: 'Creating an Order / Quoting a Job', role: 'admin',
+    steps: [
+      { text: 'Get the job\'s Materials Order Form ready', sub: 'From Spruce, or built manually' },
+      { text: 'Go to Deliveries in the app' },
+      { text: 'Have a spreadsheet order form? Tap "Import Materials Order Form"', sub: 'The app checks each line against current stock automatically', decision: 'No spreadsheet, just a rough list? Tap "+ New Order" instead and add items manually.' },
+      { text: 'Review what\'s already in stock vs what needs ordering' },
+      { text: 'Confirm and create the order', sub: 'It sits as "Awaiting Collection" until an engineer confirms it — nothing is added to stock yet' }
+    ]
+  },
+  {
+    icon: '🔄', title: 'Keeping the Master Database in Sync', role: 'admin',
+    steps: [
+      { text: 'Most of the time you don\'t need to do anything', sub: 'The app auto-checks before order forms and when items are added/edited' },
+      { text: 'For a manual check any time: Admin > OneDrive Live Sync > "Sync Now"' },
+      { text: 'Review what it found', sub: 'Updates from Excel, items to send to Excel, and anything brand new on either side' },
+      { text: 'Check anything under "Needs your confirmation" carefully', decision: 'These are matched by name, not a hard code — untick anything that looks like a different product before applying.' },
+      { text: 'Tap "Apply Sync"', sub: 'Stock levels are never touched by this — only names, categories, codes and prices' }
+    ]
+  },
+  {
+    icon: '💷', title: 'Reviewing Job Costs', role: 'admin',
+    steps: [
+      { text: 'Go to Admin > Job Reports' },
+      { text: 'Filter by engineer and/or date range (optional)' },
+      { text: 'Tap "Show Jobs"' },
+      { text: 'See each job\'s material cost and a running total across everything shown', sub: 'Costs use the cheapest available supplier price for each item' },
+      { text: 'Tap any job for the full itemised breakdown', sub: 'Every item used, quantity, unit price, and which supplier' }
+    ]
+  },
+  {
+    icon: '🛠️', title: 'Fixing a Mistake', role: 'admin',
+    steps: [
+      { text: 'Work out what actually went wrong', decision: 'Wrong quantity entered? Use ✏️ Adjust Stock. Used from the wrong location (e.g. logged as Yard but really taken from a van)? Use ⇄ Transfer Stock. Stock physically going back to a supplier? Use ↩️ Return to Supplier.' },
+      { text: 'Open the item and tap the matching button' },
+      { text: 'Fill in the correction — add a note on Transfers if it\'s correcting an error, so the Activity Log stays clear' },
+      { text: 'Confirm', sub: 'The original mistake stays visible in the Activity Log alongside the correction — nothing gets hidden, it just gets fixed' }
+    ]
   }
 ];
 
+function renderProcessOverview() {
+  const stages = [
+    { icon: '📝', title: 'Quote & Order', role: 'Rachel & Dan', desc: 'Job priced up, materials order form created and checked against current stock' },
+    { icon: '🚚', title: 'Receive Stock', role: 'Engineers', desc: 'Delivery confirmed, quantities checked, added to van/yard stock' },
+    { icon: '🗄️', title: 'Manage Stock', role: 'Everyone', desc: 'Scanning, stock takes, transfers & corrections keep the numbers accurate day to day' },
+    { icon: '🔧', title: 'Do the Job', role: 'Engineers', desc: 'Materials used get logged on site, stock deducts automatically' },
+    { icon: '💷', title: 'Cost & Report', role: 'Rachel & Dan', desc: 'Job material cost calculated automatically, reviewed in Job Reports' },
+    { icon: '🔄', title: 'Sync the Data', role: 'Automatic', desc: 'App and master spreadsheet stay lined up, so the next quote starts from accurate prices' }
+  ];
+  return `
+    <div style="margin-bottom:22px">
+      <h3 style="font-size:13px;font-weight:700;color:#e8edf2;margin-bottom:3px">🗺️ How It All Fits Together</h3>
+      <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">The whole cycle, start to finish — tap any "How To" below for the detailed steps.</p>
+      ${stages.map((s, i) => `
+        <div style="position:relative;padding-left:0">
+          <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:9px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start">
+            <div style="font-size:22px;line-height:1">${s.icon}</div>
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:2px">
+                <span style="font-size:13px;font-weight:700;color:#e8edf2">${i+1}. ${s.title}</span>
+                <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:${s.role==='Automatic'?'#1a2038':'#1a3a5a'};color:${s.role==='Automatic'?'#8ab4d8':'#5b9fd5'};padding:2px 7px;border-radius:8px">${s.role}</span>
+              </div>
+              <div style="font-size:11px;color:#8ab4d8;line-height:1.4">${s.desc}</div>
+            </div>
+          </div>
+          ${i < stages.length - 1
+            ? '<div style="display:flex;justify-content:center;padding:4px 0;color:#2a4060;font-size:16px">↓</div>'
+            : '<div style="display:flex;justify-content:center;align-items:center;gap:6px;padding:6px 0 0;color:#4a6880;font-size:10px">↻ back to Quote &amp; Order for the next job</div>'}
+        </div>`).join('')}
+    </div>`;
+}
+
 function renderHelpPage() {
   const el = document.getElementById('helpGuideList');
-  el.innerHTML = HELP_GUIDES.map((guide, gi) => `
+  el.innerHTML = renderProcessOverview() + HELP_GUIDES.map((guide, gi) => `
     <div class="flow-card" id="flowcard-${gi}">
       <div class="flow-card-head" onclick="toggleFlowCard(${gi})">
-        <div class="flow-card-title"><span>${guide.icon}</span><span>${guide.title}</span></div>
+        <div class="flow-card-title"><span>${guide.icon}</span><span>${guide.title}</span>${guide.role ? `<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:${guide.role==='engineer'?'#1a3a2a':guide.role==='admin'?'#3a2a10':'#2a1a3a'};color:${guide.role==='engineer'?'#4cdf8a':guide.role==='admin'?'#f0a020':'#c084fc'};padding:2px 6px;border-radius:8px;margin-left:2px">${guide.role==='engineer'?'Engineers':guide.role==='admin'?'Admin':'Everyone'}</span>` : ''}</div>
         <span class="flow-card-chevron">▶</span>
       </div>
       <div class="flow-card-body">
