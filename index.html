@@ -698,6 +698,7 @@ td{padding:8px 9px;vertical-align:middle}
             <button class="btn btn-outline" style="padding:6px 11px;font-size:12px" onclick="exportMasterCatalog()">↓ Export Everything (xlsx)</button>
           </div>
           <p style="font-size:10px;margin-top:8px"><a href="#" onclick="markAllItemsSynced();return false" style="color:#6b8fad;text-decoration:underline">Already caught the spreadsheet up manually? Set today as the starting point</a></p>
+          <p style="font-size:10px;margin-top:4px"><a href="#" onclick="forceFullResync();return false" style="color:#f0a020;text-decoration:underline">Something seems stuck/missing? Force a full re-check of every item</a></p>
         </details>
       </div>
       <div class="admin-section">
@@ -3369,6 +3370,19 @@ async function markAllItemsSynced() {
   } catch (e) { setSync('err'); toast('Failed: ' + e.message, 'error'); }
 }
 
+async function forceFullResync() {
+  if (!confirm(`This marks every item as "not yet synced," so the next OneDrive sync will properly re-check all ${items.length} items — including any that got stuck from a previous interrupted sync. It won't duplicate anything already correctly linked, it just makes sure nothing's been missed.\n\nContinue?`)) return;
+  setSync('busy');
+  try {
+    for (const it of items) {
+      await db.collection('items').doc(it.id).update({ syncedToMaster: false });
+    }
+    setSync('ok');
+    toast('Done — tap "Sync Now" to run the full re-check', 'success');
+    updateNewItemsBadge();
+  } catch (e) { setSync('err'); toast('Failed: ' + e.message, 'error'); }
+}
+
 
 // ════════════════════════════════════════
 //  ONEDRIVE LIVE SYNC (Microsoft Graph)
@@ -3776,13 +3790,15 @@ async function applyOneDriveSync() {
       await db.collection('items').doc(item.id).update({ suppliers: newSuppliers, syncedToMaster: true });
     }
 
-    // Brand new products found only in Excel — create them in the app, then
-    // write the freshly-generated barcode back into that Excel row so it's
-    // permanently linked from here on.
+    // Brand new products found only in Excel — write the barcode to Excel
+    // FIRST, then create the app item. If the Excel write fails partway
+    // through the sync, nothing gets created in the app in a half-linked
+    // state — it'll just show up again cleanly on the next sync attempt.
     for (const er of newFromExcel) {
       if (!er.include) continue;
       step++; setProgress(`Adding ${er.description} to the app`);
       const barcode = generateBarcodeValue();
+      await odWriteCell(token, er.rowIndex, cols.appBarcode, barcode, sessionId);
       const suppliers = {};
       Object.entries(er.supplierData).forEach(([s, d]) => { suppliers[s] = { code: d.code, price: d.price, min_order: '' }; });
       await db.collection('items').add({
@@ -3790,7 +3806,6 @@ async function applyOneDriveSync() {
         barcode, locations: {}, min_qty: 0, notes: 'Added from OneDrive sync', suppliers,
         syncedToMaster: true, createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      await odWriteCell(token, er.rowIndex, cols.appBarcode, barcode, sessionId);
     }
 
     // Confirmed name-matches: link via barcode, then treat as App → Excel (app is authoritative for a first link)
