@@ -748,6 +748,7 @@ td{padding:8px 9px;vertical-align:middle}
     <h2 style="font-size:14px;margin-bottom:4px">🔄 OneDrive Sync Review</h2>
     <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">Barcode-matched items apply automatically below. Anything matched by name needs your confirmation first — check carefully, similar names can be different products.</p>
     <div id="odReviewSummary" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
+    <div id="odApplyProgress" style="display:none;font-size:11px;color:#f0a020;background:#2e2410;border:1px solid #4a3a10;border-radius:6px;padding:8px 10px;margin-bottom:14px"></div>
 
     <div id="odNeedsConfirmSection" style="display:none">
       <div style="font-size:10px;font-weight:700;color:#f0a020;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">⚠ Needs your confirmation — possible matches by name</div>
@@ -766,7 +767,7 @@ td{padding:8px 9px;vertical-align:middle}
     <div id="odToExcelRows" style="max-height:180px;overflow-y:auto"></div>
 
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
-      <button class="btn btn-primary" style="padding:9px 14px;font-size:12px" onclick="applyOneDriveSync()">✓ Apply Sync</button>
+      <button class="btn btn-primary" id="odApplySyncBtn" style="padding:9px 14px;font-size:12px" onclick="applyOneDriveSync()">✓ Apply Sync</button>
       <button class="btn btn-outline" style="padding:9px 14px;font-size:12px" onclick="closeModal('odSyncReviewModal')">Cancel</button>
     </div>
   </div>
@@ -3492,6 +3493,8 @@ async function graphFetch(path, token, options = {}, sessionId) {
       // Back off and try again rather than failing the whole sync outright.
       const retryAfter = parseFloat(resp.headers.get('Retry-After')) || 2;
       if (attempt === maxAttempts) throw new Error(`Graph API is rate-limiting requests (429) — even after ${maxAttempts} retries. Try again in a minute, or sync fewer items at once.`);
+      const progressEl = document.getElementById('odApplyProgress');
+      if (progressEl) progressEl.textContent = `Microsoft asked us to slow down — waiting ${Math.ceil(retryAfter)}s before retrying (attempt ${attempt}/${maxAttempts})...`;
       await odSleep((retryAfter * 1000) + 300);
       continue;
     }
@@ -3697,6 +3700,9 @@ async function autoSyncOneDrive(reasonLabel) {
 }
 
 function renderOneDriveSyncReview() {
+  document.getElementById('odApplyProgress').style.display = 'none';
+  const btn = document.getElementById('odApplySyncBtn');
+  if (btn) { btn.disabled = false; btn.textContent = '✓ Apply Sync'; }
   const { toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
   document.getElementById('odReviewSummary').innerHTML = `
     <span style="background:#0f1e30;color:#6b8fad;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${toApplyToApp.length} update${toApplyToApp.length !== 1 ? 's' : ''} from Excel</span>
@@ -3746,14 +3752,25 @@ function renderOneDriveSyncReview() {
 
 async function applyOneDriveSync() {
   if (!odSyncData) { toast('Sync data has expired — tap "Sync Now" again first', 'error'); return; }
+  const btn = document.getElementById('odApplySyncBtn');
+  const progressEl = document.getElementById('odApplyProgress');
+  btn.disabled = true; btn.textContent = '⏳ Applying...';
+  progressEl.style.display = 'block'; progressEl.textContent = 'Starting sync...';
   setSync('busy');
   let sessionId = null, token = null;
   try {
     const { cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
+    const totalSteps = toApplyToApp.length + newFromExcel.filter(e=>e.include).length + needsConfirmation.filter(n=>n.confirmed).length + toApplyToExcel.length;
+    let step = 0;
+    const setProgress = (label) => { progressEl.textContent = `${label} (${step}/${totalSteps})`; };
+
     token = await getGraphToken(); // fresh token — the one from the initial check may have gone stale while reviewing
+    progressEl.textContent = 'Connected — opening Excel session...';
     sessionId = await odCreateSession(token); // one shared session for every write below, instead of one per request
+
     // Excel → App updates (barcode-matched, excel side changed)
     for (const { item, excelRow } of toApplyToApp) {
+      step++; setProgress(`Updating ${item.name} from Excel`);
       const newSuppliers = {};
       Object.entries(excelRow.supplierData).forEach(([s, d]) => { newSuppliers[s] = { code: d.code, price: d.price, min_order: item.suppliers?.[s]?.min_order || '' }; });
       await db.collection('items').doc(item.id).update({ suppliers: newSuppliers, syncedToMaster: true });
@@ -3764,6 +3781,7 @@ async function applyOneDriveSync() {
     // permanently linked from here on.
     for (const er of newFromExcel) {
       if (!er.include) continue;
+      step++; setProgress(`Adding ${er.description} to the app`);
       const barcode = generateBarcodeValue();
       const suppliers = {};
       Object.entries(er.supplierData).forEach(([s, d]) => { suppliers[s] = { code: d.code, price: d.price, min_order: '' }; });
@@ -3779,6 +3797,7 @@ async function applyOneDriveSync() {
     let nextRow = odSyncData.nextRowIndex;
     for (const nc of needsConfirmation) {
       if (!nc.confirmed) continue;
+      step++; setProgress(`Linking ${nc.item.name}`);
       await odWriteCell(token, nc.excelRow.rowIndex, cols.appBarcode, nc.item.barcode || '', sessionId);
       toApplyToExcel.push({ item: nc.item, rowIndex: nc.excelRow.rowIndex, isNew: false });
     }
@@ -3790,6 +3809,7 @@ async function applyOneDriveSync() {
 
     // App → Excel updates/new rows
     for (const r of toApplyToExcel) {
+      step++; setProgress(`Sending ${r.item.name} to Excel`);
       const rowData = { category: r.item.category, description: r.item.name, mfrCode: r.item.mfr_code, appBarcode: r.item.barcode, supplierData: r.item.suppliers || {} };
       const values = odRowToValues(rowData, totalCols, cols);
       if (r.isNew) { await odAppendRow(token, values, nextRow, sessionId); nextRow++; }
@@ -3797,6 +3817,7 @@ async function applyOneDriveSync() {
       await db.collection('items').doc(r.item.id).update({ syncedToMaster: true });
     }
 
+    progressEl.textContent = 'Finishing up...';
     await db.collection('config').doc('onedrive').update({ lastSyncAt: Date.now() });
     odConfig.lastSyncAt = Date.now();
     await logAction('edit', 'OneDrive sync completed', `${currentUser?.name || 'Someone'} synced ${toApplyToApp.length} update(s) from Excel, added ${newFromExcel.filter(er=>er.include).length} new item(s) from Excel, and sent ${toApplyToExcel.length} item(s) to Excel.`);
@@ -3811,7 +3832,9 @@ async function applyOneDriveSync() {
     if (token) await odCloseSession(token, sessionId).catch(() => {});
     setSync('err');
     toast('Sync failed while applying: ' + e.message, 'error');
+    progressEl.textContent = 'Failed: ' + e.message;
   }
+  btn.disabled = false; btn.textContent = '✓ Apply Sync';
 }
 
 
