@@ -702,6 +702,12 @@ td{padding:8px 9px;vertical-align:middle}
         </details>
       </div>
       <div class="admin-section">
+        <h3>🧹 Clean Up Duplicate Items</h3>
+        <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Finds items with identical names — useful after a sync that may have created duplicates. Any stock on a duplicate gets merged into the one you keep, nothing is lost.</p>
+        <button class="btn btn-warn" style="padding:7px 13px;font-size:12px" onclick="findDuplicateItems()">🔍 Scan for Duplicates</button>
+        <div id="dupScanResult" style="font-size:11px;color:#6b8fad;margin-top:8px"></div>
+      </div>
+      <div class="admin-section">
         <h3>📋 Job Reports</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -744,6 +750,21 @@ td{padding:8px 9px;vertical-align:middle}
 </div>
 
 <!-- OneDrive Sync Review -->
+<!-- Duplicate Cleanup Review -->
+<div class="overlay" id="dupCleanupModal" onclick="if(event.target===this)closeModal('dupCleanupModal')">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:4px">🧹 Duplicate Items Found</h2>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">For each group, pick which one to keep — it's pre-selected to whichever has the most stock, or the oldest entry if all are empty. Stock on the others gets merged in before they're removed.</p>
+    <div id="dupCleanupSummary" style="font-size:12px;color:#e8edf2;margin-bottom:12px;font-weight:600"></div>
+    <div id="dupCleanupGroups" style="max-height:400px;overflow-y:auto"></div>
+    <div id="dupCleanupProgress" style="display:none;font-size:11px;color:#f0a020;background:#2e2410;border:1px solid #4a3a10;border-radius:6px;padding:8px 10px;margin-top:14px"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="dupCleanupBtn" style="padding:9px 14px;font-size:12px" onclick="applyDuplicateCleanup()">✓ Clean Up Selected</button>
+      <button class="btn btn-outline" style="padding:9px 14px;font-size:12px" onclick="closeModal('dupCleanupModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="odSyncReviewModal" onclick="if(event.target===this)closeModal('odSyncReviewModal')">
   <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
     <h2 style="font-size:14px;margin-bottom:4px">🔄 OneDrive Sync Review</h2>
@@ -3381,6 +3402,105 @@ async function forceFullResync() {
     toast('Done — tap "Sync Now" to run the full re-check', 'success');
     updateNewItemsBadge();
   } catch (e) { setSync('err'); toast('Failed: ' + e.message, 'error'); }
+}
+
+// ════════════════════════════════════════
+//  DUPLICATE ITEM CLEANUP
+// ════════════════════════════════════════
+let dupGroups = []; // [{ key, items: [...], keepIndex }]
+
+function findDuplicateItems() {
+  const byName = {};
+  items.forEach(it => {
+    const key = (it.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!key) return;
+    (byName[key] = byName[key] || []).push(it);
+  });
+
+  dupGroups = Object.entries(byName)
+    .filter(([, its]) => its.length > 1)
+    .map(([key, its]) => {
+      // Default "keep": most stock first, then prefer one NOT created by the
+      // sync bug, then the oldest entry.
+      const sorted = [...its].sort((a, b) => {
+        const stockDiff = totalQty(b) - totalQty(a);
+        if (stockDiff !== 0) return stockDiff;
+        const aSyncDupe = a.notes === 'Added from OneDrive sync' ? 1 : 0;
+        const bSyncDupe = b.notes === 'Added from OneDrive sync' ? 1 : 0;
+        if (aSyncDupe !== bSyncDupe) return aSyncDupe - bSyncDupe;
+        const aTime = a.createdAt?.toMillis?.() || 0, bTime = b.createdAt?.toMillis?.() || 0;
+        return aTime - bTime;
+      });
+      const keepIndex = its.indexOf(sorted[0]);
+      return { key, items: its, keepIndex };
+    })
+    .sort((a, b) => b.items.length - a.items.length);
+
+  const resultEl = document.getElementById('dupScanResult');
+  if (!dupGroups.length) {
+    resultEl.textContent = `✓ No duplicates found — checked ${items.length} items.`;
+    return;
+  }
+  const totalDupes = dupGroups.reduce((s, g) => s + g.items.length - 1, 0);
+  resultEl.textContent = `Found ${dupGroups.length} group(s), ${totalDupes} duplicate item(s) that can be removed.`;
+  renderDupCleanupGroups();
+  document.getElementById('dupCleanupModal').classList.add('open');
+}
+
+function renderDupCleanupGroups() {
+  document.getElementById('dupCleanupSummary').textContent = `${dupGroups.length} group(s) found — ${dupGroups.reduce((s,g)=>s+g.items.length-1,0)} item(s) will be removed after merging their stock.`;
+  document.getElementById('dupCleanupGroups').innerHTML = dupGroups.map((g, gi) => `
+    <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:10px 12px;margin-bottom:9px">
+      <div style="font-size:12px;font-weight:700;color:#e8edf2;margin-bottom:6px">${g.items[0].name} <span style="color:#4a6880;font-weight:400">(${g.items.length} copies)</span></div>
+      ${g.items.map((it, ii) => `
+        <label style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;cursor:pointer;border-top:${ii>0?'1px solid #1a2840':'none'}">
+          <input type="radio" name="dupgroup-${gi}" value="${ii}" ${g.keepIndex===ii?'checked':''} onchange="dupGroups[${gi}].keepIndex=${ii}" style="margin-top:3px">
+          <div style="flex:1">
+            <div style="font-size:11px;color:#e8edf2">Stock: <strong>${totalQty(it)}</strong>${it.barcode ? ' · Barcode: '+it.barcode : ' · No barcode'}</div>
+            <div style="font-size:10px;color:#4a6880">${it.category||'Uncategorised'}${it.notes ? ' · '+it.notes : ''}</div>
+          </div>
+          ${g.keepIndex===ii ? '<span style="font-size:9px;font-weight:700;color:#4cdf8a;background:#0f2e1a;padding:2px 6px;border-radius:6px">KEEP</span>' : ''}
+        </label>`).join('')}
+    </div>`).join('');
+}
+
+async function applyDuplicateCleanup() {
+  if (!dupGroups.length) return;
+  const btn = document.getElementById('dupCleanupBtn');
+  const progressEl = document.getElementById('dupCleanupProgress');
+  btn.disabled = true; btn.textContent = '⏳ Cleaning up...';
+  progressEl.style.display = 'block';
+  setSync('busy');
+  try {
+    let done = 0;
+    const total = dupGroups.length;
+    for (const g of dupGroups) {
+      done++;
+      const keeper = g.items[g.keepIndex];
+      progressEl.textContent = `Merging "${keeper.name}" (${done}/${total})...`;
+      const mergedLocations = { ...(keeper.locations || {}) };
+      for (let i = 0; i < g.items.length; i++) {
+        if (i === g.keepIndex) continue;
+        const dupe = g.items[i];
+        Object.entries(dupe.locations || {}).forEach(([loc, qty]) => {
+          mergedLocations[loc] = (mergedLocations[loc] || 0) + Number(qty || 0);
+        });
+      }
+      await db.collection('items').doc(keeper.id).update({ locations: mergedLocations, qty: firebase.firestore.FieldValue.delete() });
+      for (let i = 0; i < g.items.length; i++) {
+        if (i === g.keepIndex) continue;
+        await db.collection('items').doc(g.items[i].id).delete();
+      }
+    }
+    await logAction('del', 'Duplicate items cleaned up', `${currentUser?.name || 'Someone'} merged and removed duplicates across ${dupGroups.length} group(s).`);
+    setSync('ok');
+    closeModal('dupCleanupModal');
+    toast('Duplicates cleaned up', 'success');
+    document.getElementById('dupScanResult').textContent = '';
+    await reloadData();
+  } catch (e) { setSync('err'); toast('Cleanup failed partway: ' + e.message, 'error'); }
+  btn.disabled = false; btn.textContent = '✓ Clean Up Selected';
+  progressEl.style.display = 'none';
 }
 
 
