@@ -5024,29 +5024,45 @@ function renderDeliveryItemRows() {
     return;
   }
   el.innerHTML = deliveryItemRowData.map((row, i) => `
-    <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:4px;margin-bottom:6px;align-items:center">
-      <select onchange="delItemSelect(${i},this.value)" style="padding:7px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
-        <option value="">Select item...</option>
-        <option value="__new__" style="color:#4cdf8a">+ Add New Item...</option>
-        ${items.find(it=>it.id===row.itemId) ? '' : row.itemId ? `<option value="${row.itemId}" selected>${row.name} (new)</option>` : ''}
-        ${items.map(it=>`<option value="${it.id}"${it.id===row.itemId?' selected':''}>${it.name}</option>`).join('')}
-      </select>
+    <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:4px;margin-bottom:6px;align-items:start">
+      <div style="position:relative">
+        <input type="text" id="delItemSearch-${i}" value="${(row.name||'').replace(/"/g,'&quot;')}" placeholder="Type to search items..." autocomplete="off"
+          oninput="onDelItemSearchInput(${i},this.value)" onfocus="onDelItemSearchInput(${i},this.value)"
+          onblur="setTimeout(()=>{const r=document.getElementById('delItemResults-${i}');if(r)r.style.display='none';},150)"
+          style="width:100%;box-sizing:border-box;padding:7px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+        <div id="delItemResults-${i}" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:80;background:#1a2840;border:1px solid #2a4060;border-radius:6px;margin-top:2px;max-height:220px;overflow-y:auto;box-shadow:0 6px 16px rgba(0,0,0,.45)"></div>
+      </div>
       <input type="number" min="1" value="${row.qty}" oninput="deliveryItemRowData[${i}].qty=Math.max(1,parseInt(this.value)||1)"
         style="padding:7px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none;text-align:center">
-      <button onclick="deliveryItemRowData.splice(${i},1);renderDeliveryItemRows()" style="background:#3a1010;border:none;color:#ff6b6b;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:12px">✕</button>
+      <button onclick="deliveryItemRowData.splice(${i},1);renderDeliveryItemRows()" style="background:#3a1010;border:none;color:#ff6b6b;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:12px;margin-top:1px">✕</button>
     </div>`).join('');
 }
 
-function delItemSelect(i, itemId) {
-  if (itemId === '__new__') {
-    pendingDelRowIndex = i;
-    openAdd();
-    renderDeliveryItemRows(); // reset the select back to blank until the new item is saved
-    return;
-  }
+function onDelItemSearchInput(i, query) {
+  const resultsEl = document.getElementById(`delItemResults-${i}`);
+  if (!resultsEl) return;
+  deliveryItemRowData[i].name = query;
+  deliveryItemRowData[i].itemId = ''; // typing invalidates any previous selection until they pick again
+  const q = query.trim().toLowerCase();
+  const matches = (q ? items.filter(it => it.name.toLowerCase().includes(q)) : items).slice(0, 8);
+  const rowStyle = 'padding:8px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid #0f1e30';
+  let html = matches.map(it => `<div onmousedown="selectDelItem(${i},'${it.id}')" style="${rowStyle};color:#e8edf2" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('');
+  if (!matches.length) html += `<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches</div>`;
+  if (q) html += `<div onmousedown="triggerDelItemAddNew(${i})" style="${rowStyle};color:#4cdf8a;font-weight:600;border-bottom:none">+ Add "${query.replace(/"/g,'&quot;')}" as a new item...</div>`;
+  resultsEl.innerHTML = html;
+  resultsEl.style.display = 'block';
+}
+
+function selectDelItem(i, itemId) {
   const item = items.find(it=>it.id===itemId);
   deliveryItemRowData[i].itemId = itemId;
-  deliveryItemRowData[i].name = item?.name||'';
+  deliveryItemRowData[i].name = item?.name || '';
+  renderDeliveryItemRows();
+}
+
+function triggerDelItemAddNew(i) {
+  pendingDelRowIndex = i;
+  openAdd();
 }
 
 async function saveDelivery() {
