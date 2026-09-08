@@ -751,6 +751,19 @@ td{padding:8px 9px;vertical-align:middle}
 
 <!-- OneDrive Sync Review -->
 <!-- Duplicate Cleanup Review -->
+<!-- Stock Take Discrepancy Report -->
+<div class="overlay" id="stDiscrepancyModal" onclick="if(event.target===this)closeModal('stDiscrepancyModal')">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:4px">📊 Stock Take Discrepancy Report</h2>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">Every quantity that got corrected during this stock take — biggest differences first. Use this alongside the item's Activity Log to see who last logged usage for it.</p>
+    <div id="stDiscrepancySummary" style="font-size:12px;color:#e8edf2;margin-bottom:12px;font-weight:600"></div>
+    <div id="stDiscrepancyRows" style="max-height:420px;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('stDiscrepancyModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="dupCleanupModal" onclick="if(event.target===this)closeModal('dupCleanupModal')">
   <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
     <h2 style="font-size:14px;margin-bottom:4px">🧹 Duplicate Items Found</h2>
@@ -2478,12 +2491,67 @@ async function renderStockTakeHistory() {
       return `<div class="history-row">
         <span style="color:#c8d8e8;font-weight:600">Started ${dateLabel}</span>
         <span style="color:#6b8fad">${statusTxt}</span>
+        <button class="btn btn-outline" style="padding:4px 9px;font-size:10px;margin-left:8px" onclick="viewStockTakeDiscrepancies('${d.id}')">📊 View Discrepancies</button>
       </div>`;
     }).join('');
   } catch(e) { /* silent */ }
 }
 
-// ── Stock Take Scanner ──────────────────────────────────────────────────────
+async function viewStockTakeDiscrepancies(stocktakeId) {
+  try {
+    const stDoc = await db.collection('stocktakes').doc(stocktakeId).get();
+    const stData = stDoc.data();
+    if (!stData?.startedAt) { toast('Could not find that stock take', 'error'); return; }
+    const startTs = stData.startedAt;
+    const endTs = stData.completedAt || firebase.firestore.Timestamp.now();
+
+    // Pull everything logged during the stock take's time window, then filter
+    // to just the quantity corrections client-side — avoids needing an extra
+    // Firestore composite index for a type+date combined query.
+    const snap = await db.collection('log').where('ts', '>=', startTs).where('ts', '<=', endTs).orderBy('ts').get();
+    const rows = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.type !== 'qty' || !d.detail?.includes('during stock take')) return;
+      const m = d.detail.match(/^(.+) corrected (.+) from (\d+) to (\d+) during stock take$/);
+      if (!m) return;
+      const oldVal = parseInt(m[3]), newVal = parseInt(m[4]);
+      rows.push({
+        correctedBy: m[1], location: m[2], oldVal, newVal, diff: newVal - oldVal,
+        itemName: (d.title || '').replace('Stock take update: ', ''), ts: d.ts
+      });
+    });
+    rows.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+    renderStockTakeDiscrepancyReport(rows);
+    document.getElementById('stDiscrepancyModal').classList.add('open');
+  } catch (e) { toast('Could not load report: ' + e.message, 'error'); }
+}
+
+function renderStockTakeDiscrepancyReport(rows) {
+  const summaryEl = document.getElementById('stDiscrepancySummary');
+  const rowsEl = document.getElementById('stDiscrepancyRows');
+  if (!rows.length) {
+    summaryEl.textContent = '✓ No corrections were needed during this stock take — everything matched.';
+    rowsEl.innerHTML = '';
+    return;
+  }
+  const totalOver = rows.filter(r => r.diff > 0).length;
+  const totalUnder = rows.filter(r => r.diff < 0).length;
+  summaryEl.textContent = `${rows.length} item(s) corrected — ${totalUnder} lower than expected, ${totalOver} higher than expected.`;
+  rowsEl.innerHTML = rows.map(r => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#0f1e30;border:1px solid #1e3248;border-radius:7px;margin-bottom:6px;gap:8px">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#e8edf2">${r.itemName}</div>
+        <div style="font-size:10px;color:#4a6880">${r.location} · Corrected by ${r.correctedBy}${r.ts ? ' · ' + fmtDate(r.ts.toDate()) : ''}</div>
+      </div>
+      <div style="text-align:right;white-space:nowrap">
+        <div style="font-size:12px;color:#e8edf2">${r.oldVal} → ${r.newVal}</div>
+        <div style="font-size:11px;font-weight:700;color:${r.diff<0?'#ef4444':'#22c55e'}">${r.diff>0?'+':''}${r.diff}</div>
+      </div>
+    </div>`).join('');
+}
+
+
 let stCodeReader = null;
 let stScanActive = false;
 
