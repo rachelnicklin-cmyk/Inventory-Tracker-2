@@ -228,7 +228,7 @@ td{padding:8px 9px;vertical-align:middle}
 .st-qty-old{font-size:11px;color:#4a6880}
 .st-qty-input{width:54px;padding:5px 6px;background:#1a2840;border:1px solid #2a4060;border-radius:5px;color:#e8edf2;font-size:13px;text-align:center;outline:none;flex-shrink:0}
 .st-qty-input:focus{border-color:#3a7bd5}
-.history-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e3248;font-size:12px}
+.history-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;padding:8px 0;border-bottom:1px solid #1e3248;font-size:12px}
 .history-row:last-child{border-bottom:none}
 .log-entry{background:#162030;border:1px solid #1e3248;border-radius:7px;padding:9px 12px;margin-bottom:6px;display:flex;align-items:flex-start;gap:9px}
 .log-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
@@ -374,7 +374,7 @@ td{padding:8px 9px;vertical-align:middle}
     <div class="stats-row" id="statsRow"></div>
     <div class="reorder-alert" id="stockTakeAlert" style="background:#0a2540;border-color:#3a7bd5">
       <span style="font-weight:700;color:#5b9fd5;font-size:13px">📋 Stock take due — <span id="stockTakeMonthLabel"></span></span>
-      <button class="btn btn-primary" style="padding:5px 11px;font-size:11px" onclick="openStockTake()">Start Stock Take</button>
+      <button class="btn btn-primary" style="padding:5px 11px;font-size:11px" onclick="chooseStockTakeLocation()">Start Stock Take</button>
     </div>
     <div class="reorder-alert" id="reorderAlert">
       <span style="font-weight:700;color:#f59e0b;font-size:13px"><span id="reorderCount">0</span> items need reordering</span>
@@ -443,7 +443,15 @@ td{padding:8px 9px;vertical-align:middle}
 
       <!-- Manual entry fallback -->
       <div style="background:#1a2840;border-radius:8px;padding:12px 14px;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Or type / paste barcode manually</div>
+        <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Can't scan it? Search by name</div>
+        <div style="position:relative;margin-bottom:12px">
+          <input type="text" id="scanNameSearch" placeholder="Type an item name..." autocomplete="off"
+            oninput="onScanNameSearchInput(this.value)" onfocus="onScanNameSearchInput(this.value)"
+            onblur="setTimeout(()=>{const r=document.getElementById('scanNameSearchResults');if(r)r.style.display='none';},150)"
+            style="width:100%;box-sizing:border-box;padding:9px 10px;background:#0f1923;border:1px solid #2a4060;border-radius:7px;color:#e8edf2;font-size:14px;outline:none">
+          <div id="scanNameSearchResults" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:80;background:#1a2840;border:1px solid #2a4060;border-radius:6px;margin-top:2px;max-height:220px;overflow-y:auto;box-shadow:0 6px 16px rgba(0,0,0,.45)"></div>
+        </div>
+        <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Or type / paste barcode</div>
         <div style="display:flex;gap:8px">
           <input type="text" id="manualBarcode" placeholder="Scan with USB scanner or type here..." style="flex:1;padding:9px 10px;background:#0f1923;border:1px solid #2a4060;border-radius:7px;color:#e8edf2;font-size:14px;outline:none" onkeydown="if(event.key==='Enter')handleBarcode(this.value.trim())">
           <button class="btn btn-primary" style="padding:8px 14px;font-size:13px" onclick="handleBarcode(document.getElementById('manualBarcode').value.trim())">Go</button>
@@ -526,7 +534,7 @@ td{padding:8px 9px;vertical-align:middle}
         <div id="stockTakeHistoryList"><div class="empty-state" style="padding:16px">No stock takes recorded yet.</div></div>
       </div>
 
-      <button class="btn btn-primary" style="padding:10px 18px;font-size:13px" onclick="openStockTake()">📋 Start / Continue Stock Take</button>
+      <button class="btn btn-primary" style="padding:10px 18px;font-size:13px" onclick="chooseStockTakeLocation()">📋 Start / Continue Stock Take</button>
     </div>
   </div>
 
@@ -583,6 +591,14 @@ td{padding:8px 9px;vertical-align:middle}
           </div>
           <!-- flash feedback -->
           <div id="jobScanFlash" style="display:none;text-align:center;margin-top:10px;padding:10px;border-radius:7px;font-size:13px;font-weight:600"></div>
+          <!-- name search -->
+          <div style="position:relative;margin-top:10px">
+            <input type="text" id="jobNameSearch" placeholder="Can't scan it? Search by name..." autocomplete="off"
+              oninput="onJobNameSearchInput(this.value)" onfocus="onJobNameSearchInput(this.value)"
+              onblur="setTimeout(()=>{const r=document.getElementById('jobNameSearchResults');if(r)r.style.display='none';},150)"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+            <div id="jobNameSearchResults" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:80;background:#1a2840;border:1px solid #2a4060;border-radius:6px;margin-top:2px;max-height:200px;overflow-y:auto;box-shadow:0 6px 16px rgba(0,0,0,.45)"></div>
+          </div>
           <!-- manual entry -->
           <div style="display:flex;gap:6px;margin-top:10px">
             <input type="text" id="jobManualBarcode" placeholder="Or type barcode manually" style="flex:1;padding:8px 10px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
@@ -752,6 +768,18 @@ td{padding:8px 9px;vertical-align:middle}
 <!-- OneDrive Sync Review -->
 <!-- Duplicate Cleanup Review -->
 <!-- Stock Take Discrepancy Report -->
+<!-- Stock Take Location Picker -->
+<div class="overlay" id="stLocationChooseModal" onclick="if(event.target===this)closeModal('stLocationChooseModal')">
+  <div class="modal sm">
+    <h2 style="font-size:14px;margin-bottom:4px">📋 Which location?</h2>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">Counting just one van or the yard is much quicker than doing everything at once — the list only shows items normally kept there.</p>
+    <div id="stLocationChooseButtons" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('stLocationChooseModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="stDiscrepancyModal" onclick="if(event.target===this)closeModal('stDiscrepancyModal')">
   <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
     <h2 style="font-size:14px;margin-bottom:4px">📊 Stock Take Discrepancy Report</h2>
@@ -1187,11 +1215,18 @@ td{padding:8px 9px;vertical-align:middle}
 <!-- Stock Take -->
 <div class="overlay" id="stockTakeModal">
   <div class="modal lg">
-    <h2>📋 Stock Take — <span id="stockTakeModalMonth"></span></h2>
+    <h2 id="stockTakeModalTitle">📋 Stock Take — <span id="stockTakeModalMonth"></span></h2>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <div class="search-box" style="flex:1;min-width:130px"><span style="color:#4a6880;font-size:13px">🔍</span><input type="text" id="stocktake-search" placeholder="Search items..." oninput="renderStockTakeList()"></div>
       <button class="btn btn-outline" id="stScanBtn" style="padding:6px 12px;font-size:12px;flex-shrink:0" onclick="toggleStockTakeScanner()">📷 Scan</button>
       <span style="font-size:12px;color:#6b8fad;white-space:nowrap" id="stockTakeProgress"></span>
+    </div>
+    <div id="stNotListedBox" style="display:none;margin-bottom:12px;position:relative">
+      <input type="text" id="stNotListedSearch" placeholder="Found something not in this list? Search to add it..." autocomplete="off"
+        oninput="onStNotListedInput(this.value)" onfocus="onStNotListedInput(this.value)"
+        onblur="setTimeout(()=>{const r=document.getElementById('stNotListedResults');if(r)r.style.display='none';},150)"
+        style="width:100%;box-sizing:border-box;padding:8px;background:#0f1e30;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
+      <div id="stNotListedResults" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:80;background:#1a2840;border:1px solid #2a4060;border-radius:6px;margin-top:2px;max-height:200px;overflow-y:auto;box-shadow:0 6px 16px rgba(0,0,0,.45)"></div>
     </div>
     <!-- Scanner for stock take -->
     <div id="stScannerBox" style="display:none;margin-bottom:12px;border-radius:9px;overflow:hidden;background:#0f1923;position:relative">
@@ -1514,6 +1549,11 @@ async function loginAs(u) {
   document.getElementById('ubAvatar').style.color = u.color;
   const isAdmin = u.role === 'admin';
   document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin ? '' : 'none');
+  // Record that this person actually logged in — lets admin see who's really using the app
+  db.collection('users').doc(u.id).update({
+    lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
+    loginCount: firebase.firestore.FieldValue.increment(1)
+  }).catch(e => console.warn('Could not record login:', e));
   // Load items and subscribe to live updates
   setSync('busy');
   setLoading('Loading inventory...');
@@ -2289,27 +2329,41 @@ function renderLog() {
     </div>`;
   }).join('');
 }
-function exportLog() {
-  const rows=[['Timestamp','User','Type','Title','Detail']];
-  actLog.forEach(e=>rows.push([e.ts?.toDate?.()?.toISOString()||'',e.user,e.type,e.title,e.detail]));
-  dl(rows.map(r=>r.map(c=>`"${String(c||'').replace(/"/g,"''")}"`).join(',')).join('\n'),'activity_log.csv','text/csv');
+async function exportLog() {
+  toast('Fetching full history...', 'success');
+  try {
+    // Export always pulls everything, regardless of how much is shown on screen
+    const snap = await db.collection('log').orderBy('ts','desc').get();
+    const rows=[['Timestamp','User','Type','Title','Detail']];
+    snap.forEach(d => {
+      const e = d.data();
+      rows.push([e.ts?.toDate?.()?.toISOString()||'', e.user, e.type, e.title, e.detail]);
+    });
+    dl(rows.map(r=>r.map(c=>`"${String(c||'').replace(/"/g,"''")}"`).join(',')).join('\n'),'activity_log_full_history.csv','text/csv');
+    toast(`Exported ${snap.size} entries`, 'success');
+  } catch(e) { toast('Export failed: '+e.message, 'error'); }
 }
 
 // ════════════════════════════════════════
 //  ADMIN — USERS
 // ════════════════════════════════════════
 function renderAdminPanel() {
-  document.getElementById('userList').innerHTML = users.map(u => `
+  document.getElementById('userList').innerHTML = users.map(u => {
+    const lastSeen = u.lastLogin
+      ? `Last used app: ${fmtDate(u.lastLogin.toDate())} · ${u.loginCount||1} login${(u.loginCount||1)!==1?'s':''} total`
+      : `<span style="color:#f0a020">⚠ Never logged in</span>`;
+    return `
     <div class="user-row">
       <div style="display:flex;align-items:center;gap:9px">
         <div style="width:32px;height:32px;background:${u.color}25;color:${u.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0">${u.initials||u.name.substring(0,2).toUpperCase()}</div>
-        <div><div style="font-weight:600;color:#e8edf2;font-size:13px">${u.name}</div><span class="role-badge role-${u.role}">${u.role}</span></div>
+        <div><div style="font-weight:600;color:#e8edf2;font-size:13px">${u.name}</div><span class="role-badge role-${u.role}">${u.role}</span><div style="font-size:10px;color:#4a6880;margin-top:2px">${lastSeen}</div></div>
       </div>
       <div style="display:flex;gap:5px">
         <button class="btn btn-outline" style="padding:4px 8px;font-size:11px" onclick="openEditUser('${u.id}')">Change PIN</button>
         ${users.length>1?`<button class="btn btn-danger" style="padding:4px 8px;font-size:11px" onclick="deleteUser('${u.id}')">Remove</button>`:''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   renderLocationList();
   populateJobReportEngineers();
 }
@@ -2407,7 +2461,9 @@ async function deleteUser(id) {
 //  STOCK TAKE
 // ════════════════════════════════════════
 let stockTakeChecked = {}; // {itemId: true}
+let stockTakeExtra = {}; // {itemId: true} — items manually added to a location-scoped session (found unexpectedly)
 let currentStockTakeId = ''; // Firestore doc id of the in-progress/current cycle
+let currentStockTakeLocation = null; // null = whole business (legacy); otherwise a single location name
 const STOCKTAKE_CYCLE_MONTHS = 6;
 
 function fmtDate(d) {
@@ -2428,15 +2484,21 @@ async function getLastCompletedStockTake() {
   return completed[0] || null;
 }
 // Returns the current in-progress (not yet completed) doc, or null
-async function getInProgressStockTake() {
-  const snap = await db.collection('stocktakes').orderBy('startedAt','desc').limit(5).get();
+async function getInProgressStockTake(location) {
+  const snap = await db.collection('stocktakes').orderBy('startedAt','desc').limit(20).get();
+  const inProgress = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => !d.completed && (d.location || null) === (location || null));
+  return inProgress[0] || null;
+}
+// Any in-progress stock take at all, regardless of location — used for the top-level status banner
+async function getAnyInProgressStockTake() {
+  const snap = await db.collection('stocktakes').orderBy('startedAt','desc').limit(20).get();
   const inProgress = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => !d.completed);
   return inProgress[0] || null;
 }
 // Works out whether a stock take is due, and what the due date is
 async function getStockTakeDueInfo() {
   const last = await getLastCompletedStockTake();
-  const inProgress = await getInProgressStockTake();
+  const inProgress = await getAnyInProgressStockTake();
   let dueDate;
   if (last && last.completedAt) {
     dueDate = addMonths(last.completedAt.toDate(), STOCKTAKE_CYCLE_MONTHS);
@@ -2465,7 +2527,7 @@ async function renderStockTakePage() {
   try {
     const { isDue, dueDate, last, inProgress } = await getStockTakeDueInfo();
     if (inProgress) {
-      document.getElementById('stockTakeStatusLine').innerHTML = `⏳ A stock take is <strong>in progress</strong> — started by <strong>${inProgress.startedBy||'someone'}</strong>`;
+      document.getElementById('stockTakeStatusLine').innerHTML = `⏳ A stock take is <strong>in progress</strong> — started by <strong>${inProgress.startedBy||'someone'}</strong> (${inProgress.location ? '📍 '+inProgress.location : '🌍 All Locations'})`;
     } else if (isDue) {
       document.getElementById('stockTakeStatusLine').innerHTML = `📋 Stock take is <strong>due</strong> (every ${STOCKTAKE_CYCLE_MONTHS} months — last due ${fmtDate(dueDate)})`;
     } else {
@@ -2485,13 +2547,16 @@ async function renderStockTakeHistory() {
     list.innerHTML = snap.docs.map(d => {
       const data = d.data();
       const dateLabel = data.startedAt ? fmtDate(data.startedAt.toDate()) : '—';
+      const locLabel = data.location ? `📍 ${data.location}` : '🌍 All Locations';
       const statusTxt = data.completed
         ? `<span style="color:#22c55e;font-weight:700">✓ Completed</span> by ${data.completedBy} on ${data.completedAt?fmtDate(data.completedAt.toDate()):'—'}`
         : `<span style="color:#f59e0b;font-weight:700">⏳ In progress</span>`;
-      return `<div class="history-row">
-        <span style="color:#c8d8e8;font-weight:600">Started ${dateLabel}</span>
-        <span style="color:#6b8fad">${statusTxt}</span>
-        <button class="btn btn-outline" style="padding:4px 9px;font-size:10px;margin-left:8px" onclick="viewStockTakeDiscrepancies('${d.id}')">📊 View Discrepancies</button>
+      return `<div class="history-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div style="display:flex;justify-content:space-between;width:100%;flex-wrap:wrap;gap:4px">
+          <span style="color:#c8d8e8;font-weight:600">${locLabel} — Started ${dateLabel}</span>
+          <span style="color:#6b8fad">${statusTxt}</span>
+        </div>
+        <button class="btn btn-outline" style="padding:4px 9px;font-size:10px" onclick="viewStockTakeDiscrepancies('${d.id}')">📊 View Discrepancies</button>
       </div>`;
     }).join('');
   } catch(e) { /* silent */ }
@@ -2662,6 +2727,12 @@ function confirmStockTakeScan(itemId) {
   resetStockTakeScannerBox();
   const item = items.find(i => i.id === itemId);
   if (!item) return;
+  // If this item wasn't already expected at the current location, add it so
+  // scanning always works even for something found somewhere unexpected.
+  if (currentStockTakeLocation && (getLocations(item)[currentStockTakeLocation]||0) <= 0 && !stockTakeExtra[itemId]) {
+    stockTakeExtra[itemId] = true;
+    saveStockTakeProgress();
+  }
   // Clear search and scroll to item
   document.getElementById('stocktake-search').value = '';
   renderStockTakeList();
@@ -2708,24 +2779,37 @@ function closeStockTakeModal() {
   closeModal('stockTakeModal');
 }
 
-async function openStockTake() {
+function chooseStockTakeLocation() {
+  const btnsEl = document.getElementById('stLocationChooseButtons');
+  btnsEl.innerHTML = LOCATIONS.map(loc => `<button class="btn btn-primary" style="padding:10px;font-size:13px;text-align:left" onclick="closeModal('stLocationChooseModal');openStockTake('${loc}')">📍 ${loc}</button>`).join('')
+    + `<button class="btn btn-outline" style="padding:10px;font-size:13px;text-align:left" onclick="closeModal('stLocationChooseModal');openStockTake(null)">🌍 All Locations (whole business)</button>`;
+  document.getElementById('stLocationChooseModal').classList.add('open');
+}
+
+async function openStockTake(location) {
+  currentStockTakeLocation = location || null;
   document.getElementById('stockTakeModalMonth').textContent = fmtDate(new Date());
   document.getElementById('stocktake-search').value = '';
+  const titleEl = document.getElementById('stockTakeModalTitle');
+  if (titleEl) titleEl.textContent = currentStockTakeLocation ? `📋 Stock Take — ${currentStockTakeLocation} (${fmtDate(new Date())})` : `📋 Stock Take — All Locations (${fmtDate(new Date())})`;
   try {
-    let inProgress = await getInProgressStockTake();
+    let inProgress = await getInProgressStockTake(currentStockTakeLocation);
     if (!inProgress) {
-      // Start a brand new cycle
+      // Start a brand new cycle for this location (or the whole business if none given)
       const ref = await db.collection('stocktakes').add({
         startedAt: firebase.firestore.FieldValue.serverTimestamp(),
         startedBy: currentUser.name,
+        location: currentStockTakeLocation,
         checkedItems: {},
         completed: false
       });
       currentStockTakeId = ref.id;
       stockTakeChecked = {};
+      stockTakeExtra = {};
     } else {
       currentStockTakeId = inProgress.id;
       stockTakeChecked = {...(inProgress.checkedItems||{})};
+      stockTakeExtra = {...(inProgress.extraItems||{})};
     }
   } catch(e) { stockTakeChecked = {}; toast('Could not start stock take: '+e.message, 'error'); return; }
   renderStockTakeList();
@@ -2734,22 +2818,34 @@ async function openStockTake() {
 
 function renderStockTakeList() {
   const q = (document.getElementById('stocktake-search').value||'').toLowerCase();
-  const filtered = items.filter(i => !q || (i.name||'').toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q));
+  const scoped = currentStockTakeLocation
+    ? items.filter(i => (getLocations(i)[currentStockTakeLocation]||0) > 0 || stockTakeChecked[i.id] || stockTakeExtra[i.id])
+    : items;
+  const filtered = scoped.filter(i => !q || (i.name||'').toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q));
   const sorted = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  const checkedCount = items.filter(i => stockTakeChecked[i.id]).length;
-  const pct = items.length ? Math.round((checkedCount/items.length)*100) : 0;
-  document.getElementById('stockTakeProgress').textContent = `${checkedCount} / ${items.length} checked (${pct}%)`;
+  const checkedCount = scoped.filter(i => stockTakeChecked[i.id]).length;
+  const pct = scoped.length ? Math.round((checkedCount/scoped.length)*100) : 0;
+  document.getElementById('stockTakeProgress').textContent = `${checkedCount} / ${scoped.length} checked (${pct}%)`;
   document.getElementById('stockTakeProgressBar').style.width = pct + '%';
+
+  const notListedBox = document.getElementById('stNotListedBox');
+  if (notListedBox) notListedBox.style.display = currentStockTakeLocation ? 'block' : 'none';
 
   document.getElementById('stockTakeList').innerHTML = sorted.map(item => {
     const isChecked = !!stockTakeChecked[item.id];
     const locs = getLocations(item);
-    const locInputs = LOCATIONS.map(loc => `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-        <span style="font-size:8px;color:#4a6880;white-space:nowrap">${loc}</span>
-        <input class="st-qty-input" type="number" min="0" value="${locs[loc]||0}" inputmode="numeric" style="width:44px"
-          data-item="${item.id}" data-loc="${loc}" onchange="updateStockTakeQty('${item.id}','${loc}', this.value)">
-      </div>`).join('');
+    const locInputs = currentStockTakeLocation
+      ? `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+          <span style="font-size:8px;color:#4a6880;white-space:nowrap">${currentStockTakeLocation}</span>
+          <input class="st-qty-input" type="number" min="0" value="${locs[currentStockTakeLocation]||0}" inputmode="numeric" style="width:54px"
+            data-item="${item.id}" data-loc="${currentStockTakeLocation}" onchange="updateStockTakeQty('${item.id}','${currentStockTakeLocation}', this.value)">
+        </div>`
+      : LOCATIONS.map(loc => `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+          <span style="font-size:8px;color:#4a6880;white-space:nowrap">${loc}</span>
+          <input class="st-qty-input" type="number" min="0" value="${locs[loc]||0}" inputmode="numeric" style="width:44px"
+            data-item="${item.id}" data-loc="${loc}" onchange="updateStockTakeQty('${item.id}','${loc}', this.value)">
+        </div>`).join('');
     return `<div class="st-row${isChecked?' checked':''}" id="st-row-${item.id}">
       <div class="st-check${isChecked?' done':''}" onclick="toggleStockTakeCheck('${item.id}')">${isChecked?'✓':''}</div>
       <div class="st-info">
@@ -2759,6 +2855,27 @@ function renderStockTakeList() {
       <div style="display:flex;gap:6px;flex-shrink:0">${locInputs}</div>
     </div>`;
   }).join('');
+}
+
+function onStNotListedInput(query) {
+  const resultsEl = document.getElementById('stNotListedResults');
+  const q = query.trim().toLowerCase();
+  if (!q) { resultsEl.style.display = 'none'; return; }
+  const alreadyShown = new Set(items.filter(i => (getLocations(i)[currentStockTakeLocation]||0) > 0 || stockTakeChecked[i.id] || stockTakeExtra[i.id]).map(i=>i.id));
+  const matches = items.filter(it => it.name.toLowerCase().includes(q) && !alreadyShown.has(it.id)).slice(0, 8);
+  resultsEl.innerHTML = matches.length
+    ? matches.map(it => `<div onmousedown="addStNotListedItem('${it.id}')" style="padding:8px 10px;cursor:pointer;font-size:12px;color:#e8edf2;border-bottom:1px solid #0f1e30" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('')
+    : '<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches, or it\'s already in the list below</div>';
+  resultsEl.style.display = 'block';
+}
+
+function addStNotListedItem(itemId) {
+  stockTakeExtra[itemId] = true;
+  document.getElementById('stNotListedSearch').value = '';
+  document.getElementById('stNotListedResults').style.display = 'none';
+  renderStockTakeList();
+  saveStockTakeProgress();
+  toast('Added to the list below — enter the quantity you found', 'success');
 }
 
 function toggleStockTakeCheck(itemId) {
@@ -2796,6 +2913,7 @@ async function saveStockTakeProgress() {
   try {
     await db.collection('stocktakes').doc(currentStockTakeId).set({
       checkedItems: stockTakeChecked,
+      extraItems: stockTakeExtra,
       completed: false,
       lastUpdatedBy: currentUser.name,
       lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
@@ -2804,9 +2922,12 @@ async function saveStockTakeProgress() {
 }
 
 async function completeStockTake() {
-  const checkedCount = items.filter(i => stockTakeChecked[i.id]).length;
-  if (checkedCount < items.length) {
-    const remaining = items.length - checkedCount;
+  const scoped = currentStockTakeLocation
+    ? items.filter(i => (getLocations(i)[currentStockTakeLocation]||0) > 0 || stockTakeChecked[i.id] || stockTakeExtra[i.id])
+    : items;
+  const checkedCount = scoped.filter(i => stockTakeChecked[i.id]).length;
+  if (checkedCount < scoped.length) {
+    const remaining = scoped.length - checkedCount;
     if (!confirm(`${remaining} item${remaining!==1?'s':''} haven't been checked yet. Mark the stock take complete anyway?`)) return;
   }
   document.getElementById('completeStockTakeBtn').disabled = true;
@@ -2814,11 +2935,12 @@ async function completeStockTake() {
   try {
     await db.collection('stocktakes').doc(currentStockTakeId).set({
       checkedItems: stockTakeChecked,
+      extraItems: stockTakeExtra,
       completed: true,
       completedBy: currentUser.name,
       completedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-    await logAction('edit', `Stock take completed`, `Completed by ${currentUser.name} — ${checkedCount}/${items.length} items checked. Next due in ${STOCKTAKE_CYCLE_MONTHS} months.`);
+    await logAction('edit', `Stock take completed`, `Completed by ${currentUser.name}${currentStockTakeLocation ? ' for '+currentStockTakeLocation : ' (all locations)'} — ${checkedCount}/${scoped.length} items checked. Next due in ${STOCKTAKE_CYCLE_MONTHS} months.`);
     setSync('ok');
     closeStockTakeModal();
     document.getElementById('stockTakeAlert').classList.remove('show');
@@ -4164,6 +4286,26 @@ function resumeScanner() {
   startScanner();
 }
 
+function onScanNameSearchInput(query) {
+  const resultsEl = document.getElementById('scanNameSearchResults');
+  const q = query.trim().toLowerCase();
+  if (!q) { resultsEl.style.display = 'none'; return; }
+  const matches = items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 8);
+  resultsEl.innerHTML = matches.length
+    ? matches.map(it => `<div onmousedown="selectScanNameSearchItem('${it.id}')" style="padding:9px 10px;cursor:pointer;font-size:13px;color:#e8edf2;border-bottom:1px solid #0f1923" onmouseover="this.style.background='#0f1923'" onmouseout="this.style.background=''">${it.name}</div>`).join('')
+    : '<div style="padding:9px 10px;font-size:12px;color:#4a6880">No matches</div>';
+  resultsEl.style.display = 'block';
+}
+
+function selectScanNameSearchItem(itemId) {
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  document.getElementById('scanNameSearch').value = '';
+  document.getElementById('scanNameSearchResults').style.display = 'none';
+  stopScanner();
+  showScanAction(item);
+}
+
 function handleBarcode(code) {
   if (!code) return;
   stopScanner();
@@ -4550,6 +4692,34 @@ function stopJobScanner() {
   const stopBtn = document.getElementById('jobStopScanBtn');
   if (startBtn) startBtn.style.display = 'flex';
   if (stopBtn) stopBtn.style.display = 'none';
+}
+
+function onJobNameSearchInput(query) {
+  const resultsEl = document.getElementById('jobNameSearchResults');
+  const q = query.trim().toLowerCase();
+  if (!q) { resultsEl.style.display = 'none'; return; }
+  const matches = items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 8);
+  resultsEl.innerHTML = matches.length
+    ? matches.map(it => `<div onmousedown="selectJobNameSearchItem('${it.id}')" style="padding:8px 10px;cursor:pointer;font-size:12px;color:#e8edf2;border-bottom:1px solid #0f1e30" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('')
+    : '<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches</div>';
+  resultsEl.style.display = 'block';
+}
+
+function selectJobNameSearchItem(itemId) {
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  document.getElementById('jobNameSearch').value = '';
+  document.getElementById('jobNameSearchResults').style.display = 'none';
+  const existing = jobItems.find(j => j.id === item.id);
+  if (existing) { existing.qty++; } else { jobItems.push({ id: item.id, name: item.name, barcode: item.barcode||'', qty: 1 }); }
+  const flash = document.getElementById('jobScanFlash');
+  flash.style.display = 'block';
+  flash.style.background = '#0f2e1a';
+  flash.style.color = '#4cdf8a';
+  flash.textContent = '✓ ' + item.name + (existing ? ` (×${existing.qty})` : '');
+  setTimeout(() => flash.style.display = 'none', 1500);
+  renderJobItemList();
+  saveDraftToFirestore();
 }
 
 function jobManualAdd() {
@@ -5647,7 +5817,8 @@ const HELP_GUIDES = [
     steps: [
       { text: 'Open the Stock Take tab' },
       { text: 'Tap "Start / Continue Stock Take"' },
-      { text: 'Scan or tick off each item as you count it', sub: 'Correct the number on the spot if it\'s wrong' },
+      { text: 'Choose which location', sub: 'Pick one van or the yard for a quick, focused count — or "All Locations" for a full business check' },
+      { text: 'Scan or tick off each item as you count it', sub: 'The list only shows what\'s normally kept there, so it\'s much shorter', decision: 'Found something that isn\'t on the list? Use the search box at the top to add it before counting it.' },
       { text: 'Save and come back later if needed', sub: 'Your progress is kept — just tap Close (save progress)' },
       { text: 'Once everything is checked, tap "✓ Mark Stock Take Complete"' }
     ]
