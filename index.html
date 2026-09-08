@@ -4174,12 +4174,12 @@ async function applyOneDriveSync() {
 //  EXPORTS
 // ════════════════════════════════════════
 function exportCSV(){
-  const rows=[['Category','Item','Mfr Code','Total Qty',...LOCATIONS,'Min','Status','Best Supplier','Best Price','Suppliers & Codes','Notes']];
+  const rows=[['Category','Item','Barcode','Mfr Code','Total Qty',...LOCATIONS,'Min','Status','Best Supplier','Best Price','Suppliers & Codes','Notes']];
   items.forEach(i=>{
     const sups=i.suppliers||{}, keys=Object.keys(sups).filter(k=>sups[k]&&sups[k].price>0).sort((a,b)=>Number(sups[a].price)-Number(sups[b].price));
     const bp=bestPrice(sups);
     const locs=getLocations(i);
-    rows.push([i.category||'',i.name||'',i.mfr_code||'',totalQty(i),...LOCATIONS.map(l=>locs[l]||0),i.min_qty||0,iStatus(i),keys[0]||'',bp?bp.toFixed(2):'',keys.map(k=>`${k}:£${Number(sups[k].price).toFixed(2)}(${sups[k].code_display||cleanCode(sups[k].code||'')||'-'})`).join('|'),i.notes||'']);
+    rows.push([i.category||'',i.name||'',i.barcode||'',i.mfr_code||'',totalQty(i),...LOCATIONS.map(l=>locs[l]||0),i.min_qty||0,iStatus(i),keys[0]||'',bp?bp.toFixed(2):'',keys.map(k=>`${k}:£${Number(sups[k].price).toFixed(2)}(${sups[k].code_display||cleanCode(sups[k].code||'')||'-'})`).join('|'),i.notes||'']);
   });
   dl(rows.map(r=>r.map(c=>`"${String(c||'').replace(/"/g,"''")}"`).join(',')).join('\n'),'rachel_materials.csv','text/csv');
 }
