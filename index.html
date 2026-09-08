@@ -1553,7 +1553,7 @@ async function loginAs(u) {
   db.collection('users').doc(u.id).update({
     lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
     loginCount: firebase.firestore.FieldValue.increment(1)
-  }).catch(e => console.warn('Could not record login:', e));
+  }).catch(e => { console.warn('Could not record login:', e); toast('Note: could not record this login (' + e.message + ')', 'error'); });
   // Load items and subscribe to live updates
   setSync('busy');
   setLoading('Loading inventory...');
@@ -1695,15 +1695,22 @@ function showPage(name) {
     if (b.textContent.toLowerCase().includes(name.substring(0,3).toLowerCase())) b.classList.add('active');
   });
   if (name === 'log') loadLog();
-  if (name === 'admin') renderAdminPanel();
+  if (name === 'admin') { refreshAndRenderAdminPanel(); updateNewItemsBadge(); loadOneDriveConfig(); }
   if (name === 'stocktake') renderStockTakePage();
   if (name !== 'scan') stopScanner();
   if (name !== 'job') stopJobScanner();
   if (name === 'job') renderJobPage();
   if (name === 'deliveries') renderDeliveriesPage();
   if (name === 'help') renderHelpPage();
-  if (name === 'admin') { updateNewItemsBadge(); loadOneDriveConfig(); }
   if (name === 'invoice') { fillMinvLocationSelect(); renderManualInvoiceRows(); }
+}
+
+// Users only load once at startup — this re-fetches so Admin > Users always
+// shows current login activity, including your own just-now login, instead
+// of the stale snapshot from when the app first opened.
+async function refreshAndRenderAdminPanel() {
+  try { await loadUsers(); } catch(e) { console.warn('Could not refresh users:', e); }
+  renderAdminPanel();
 }
 
 // ════════════════════════════════════════
