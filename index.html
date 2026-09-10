@@ -149,6 +149,8 @@ td{padding:8px 9px;vertical-align:middle}
 .s-low{background:#2d1a00;color:#f59e0b;border:1px solid #78350f}
 .s-out{background:#2d0808;color:#ef4444;border:1px solid #7f1d1d}
 .s-ondemand{background:#1a2038;color:#8ab4d8;border:1px solid #2a3a5a}
+.s-negative{background:#3a0808;color:#ff4444;border:1px solid #7f1d1d;animation:pulse-negative 2s infinite}
+@keyframes pulse-negative{0%,100%{opacity:1}50%{opacity:.6}}
 .sup-pills{display:flex;flex-wrap:wrap;gap:3px;max-width:190px}
 .sup-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 5px;border-radius:5px;font-size:10px;background:#1a2840;color:#8ab4d8;border:1px solid #1e3248;white-space:nowrap}
 .sup-pill.best{background:#052e16;color:#22c55e;border-color:#14532d}
@@ -337,6 +339,9 @@ td{padding:8px 9px;vertical-align:middle}
 
 <!-- App -->
 <div id="appScreen">
+  <div id="testModeBanner" style="display:none;background:#3a2e00;color:#ffd166;text-align:center;padding:8px 12px;font-size:13px;font-weight:700;letter-spacing:.3px;border-bottom:2px solid #ffd166">
+    🧪 TEST MODE — stock changes here are practice only and don't affect real stock
+  </div>
   <div class="topbar">
     <div class="topbar-brand">🔧 <span>Rachel's</span></div>
     <div class="tab-bar" id="tabBar">
@@ -348,10 +353,12 @@ td{padding:8px 9px;vertical-align:middle}
       <button class="tab-btn" onclick="showPage('invoice')">Invoice</button>
       <button class="tab-btn" onclick="showPage('log')">Log</button>
       <button class="tab-btn" onclick="showPage('help')" style="color:#f0a020">❓ Help</button>
+      <button class="tab-btn" onclick="openUnregisteredList()" style="position:relative">🚩 Unregistered<span id="unregBadge" style="display:none;background:#3a1a10;color:#f0805a;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
       <button class="tab-btn admin-only" onclick="showPage('admin')" style="display:none">Admin</button>
     </div>
     <div class="sync-dot ok" id="syncDot" title="Live sync status"></div>
     <div class="ub-avatar" id="ubAvatar"></div>
+    <button id="resetTestDataBtn" style="display:none;background:#3a2e00;color:#ffd166;border:1px solid #5a4400;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;margin-right:6px" onclick="resetTestData()">🧪 Reset Test Data</button>
     <button class="logout-btn" onclick="logout()">Out</button>
   </div>
 
@@ -367,6 +374,7 @@ td{padding:8px 9px;vertical-align:middle}
         <option value="out">Out of stock</option>
         <option value="low">Low stock</option>
         <option value="in">In stock</option>
+        <option value="negative">⚠ Negative stock</option>
         <option value="ondemand">Order as needed</option>
         <option value="nobarcode">⚠ Missing barcode</option>
       </select>
@@ -552,7 +560,7 @@ td{padding:8px 9px;vertical-align:middle}
       <div id="jobSetupSection">
         <div style="background:#162030;border:1px solid #1e3248;border-radius:9px;padding:14px;margin-bottom:12px">
           <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Start New Job</div>
-          <input type="text" id="jobAddressInput" placeholder="Site address / job description" style="width:100%;box-sizing:border-box;padding:9px 12px;background:#0f1e30;border:1px solid #2a4060;border-radius:7px;color:#e8edf2;font-size:13px;outline:none;margin-bottom:10px">
+          <input type="text" id="jobAddressInput" placeholder="First line of address + postcode, e.g. 10 Barnside Way, SK10 2TZ" style="width:100%;box-sizing:border-box;padding:9px 12px;background:#0f1e30;border:1px solid #2a4060;border-radius:7px;color:#e8edf2;font-size:13px;outline:none;margin-bottom:10px">
           <button class="btn btn-primary" style="width:100%;padding:10px;font-size:13px;font-weight:600" onclick="startJob()">Start Job</button>
         </div>
 
@@ -769,6 +777,45 @@ td{padding:8px 9px;vertical-align:middle}
 <!-- Duplicate Cleanup Review -->
 <!-- Stock Take Discrepancy Report -->
 <!-- Stock Take Location Picker -->
+<!-- Log Unregistered Item -->
+<div class="overlay" id="unregItemModal" onclick="if(event.target===this)closeModal('unregItemModal')">
+  <div class="modal sm">
+    <h2 style="font-size:14px;margin-bottom:4px">🚩 Log Unregistered Item</h2>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">For something not in the system yet. It's usable straight away — an admin will fill in the full details (category, barcode, pricing) within 24hrs.</p>
+    <div class="form-row full" style="margin-bottom:10px">
+      <div class="field"><label>Item Name *</label><input type="text" id="unreg-name" placeholder="e.g. 28mm Compression Elbow"></div>
+    </div>
+    <div class="form-row" style="margin-bottom:10px">
+      <div class="field"><label>Supplier</label><select id="unreg-supplier"><option value="">Not sure / other</option></select></div>
+      <div class="field"><label>Supplier Code (optional)</label><input type="text" id="unreg-code" placeholder="If shown on the packaging"></div>
+    </div>
+    <div class="form-row" style="margin-bottom:10px">
+      <div class="field"><label>Quantity *</label><input type="number" id="unreg-qty" min="1" value="1" inputmode="numeric"></div>
+      <div class="field"><label>Location *</label><select id="unreg-location"></select></div>
+    </div>
+    <div class="form-row full">
+      <div class="field"><label>Notes (optional)</label><input type="text" id="unreg-notes" placeholder="e.g. fitting/product type, anything useful for admin"></div>
+    </div>
+    <p class="err-msg" id="unregItemErr"></p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('unregItemModal')">Cancel</button>
+      <button class="btn btn-warn" id="unregItemBtn" onclick="confirmUnregisteredItem()">🚩 Log It</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unregistered Items list (everyone can see) -->
+<div class="overlay" id="unregListModal" onclick="if(event.target===this)closeModal('unregListModal')">
+  <div class="modal" style="max-width:600px;max-height:85vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:4px">🚩 Unregistered Items</h2>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">Logged by the team, usable already — waiting on an admin to fill in full details.</p>
+    <div id="unregListRows"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('unregListModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="stLocationChooseModal" onclick="if(event.target===this)closeModal('stLocationChooseModal')">
   <div class="modal sm">
     <h2 style="font-size:14px;margin-bottom:4px">📋 Which location?</h2>
@@ -1114,7 +1161,7 @@ td{padding:8px 9px;vertical-align:middle}
       <div class="field"><label>Quantity to use *</label><input type="number" id="us-qty" min="1" value="1" inputmode="numeric"></div>
     </div>
     <div class="form-row full">
-      <div class="field"><label>Job reference (optional)</label><input type="text" id="us-job" placeholder="e.g. Job #1042 – 14 Oak Lane"></div>
+      <div class="field"><label>Job site (first line + postcode) *</label><input type="text" id="us-job" placeholder="e.g. 10 Barnside Way, SK10 2TZ"></div>
     </div>
     <p class="err-msg" id="useStockErr"></p>
     <div class="modal-footer">
@@ -1265,6 +1312,12 @@ td{padding:8px 9px;vertical-align:middle}
     <div class="form-row">
       <div class="field"><label>Role *</label><select id="au-role"><option value="engineer">Engineer</option><option value="admin">Admin</option></select></div>
       <div class="field"><label>PIN (4 digits) *</label><input type="password" id="au-pin" maxlength="4" inputmode="numeric"></div>
+    </div>
+    <div class="form-row full" style="margin-top:2px">
+      <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#8ab4d8;cursor:pointer">
+        <input type="checkbox" id="au-tester" style="width:15px;height:15px">
+        🧪 Tester account — stock changes made while logged in as this user never affect real stock, only a separate practice ledger
+      </label>
     </div>
     <p class="err-msg" id="auErr">Please fill in all fields with a 4-digit PIN.</p>
     <div class="modal-footer">
@@ -1506,8 +1559,8 @@ function renderLoginUsers() {
   document.getElementById('userGrid').innerHTML = users.map(u => `
     <div class="user-btn" id="ubtn-${u.id}" onclick="selectUser('${u.id}')">
       <div class="u-avatar" style="background:${u.color}25;color:${u.color}">${u.initials||u.name.substring(0,2).toUpperCase()}</div>
-      <div class="u-name">${u.name}</div>
-      <div class="u-role">${u.role}</div>
+      <div class="u-name">${u.name}${u.isTester?' 🧪':''}</div>
+      <div class="u-role">${u.isTester?'Tester':u.role}</div>
     </div>`).join('');
 }
 function selectUser(id) {
@@ -1549,6 +1602,8 @@ async function loginAs(u) {
   document.getElementById('ubAvatar').style.color = u.color;
   const isAdmin = u.role === 'admin';
   document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin ? '' : 'none');
+  document.getElementById('testModeBanner').style.display = u.isTester ? 'block' : 'none';
+  document.getElementById('resetTestDataBtn').style.display = u.isTester ? '' : 'none';
   // Record that this person actually logged in — lets admin see who's really using the app
   db.collection('users').doc(u.id).update({
     lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1601,6 +1656,7 @@ function subscribeToItems() {
     setSync('ok');
     renderStats();
     renderTableBody();
+    renderUnregisteredBadge();
   }, err => { setSync('err'); toast('Sync error: ' + err.message, 'error'); });
 }
 
@@ -1620,16 +1676,31 @@ async function reloadData() {
 //  HELPERS
 // ════════════════════════════════════════
 function getLocations(item) {
+  // In Test Mode, read the isolated test ledger instead of real stock —
+  // falls back to a snapshot of real stock the first time, so testing feels realistic.
+  if (currentUser?.isTester) {
+    if (item.testLocations && typeof item.testLocations === 'object') return item.testLocations;
+    if (item.locations && typeof item.locations === 'object') return item.locations;
+    return {};
+  }
   // Migrates old flat 'qty' field to a locations breakdown on the fly (read-only fallback)
   if (item.locations && typeof item.locations === 'object') return item.locations;
   if (typeof item.qty === 'number' && item.qty > 0) return { [LOCATIONS[0]]: item.qty };
   return {};
+}
+// Write helper — stock-changing functions call this instead of building the
+// update payload manually, so Test Mode automatically writes to the isolated
+// ledger without every call site needing its own if/else.
+function locationsUpdatePayload(newLocs) {
+  return currentUser?.isTester ? { testLocations: newLocs } : { locations: newLocs, qty: firebase.firestore.FieldValue.delete() };
 }
 function totalQty(item) {
   const locs = getLocations(item);
   return Object.values(locs).reduce((sum, v) => sum + (Number(v)||0), 0);
 }
 function iStatus(item) {
+  const locs = getLocations(item);
+  if (Object.values(locs).some(v => v < 0)) return 'negative';
   if (item.orderOnDemand) return 'ondemand';
   const total = totalQty(item);
   if (total <= 0) return 'out';
@@ -1639,12 +1710,12 @@ function iStatus(item) {
 }
 function locationBreakdownHtml(item, compact) {
   const locs = getLocations(item);
-  const entries = Object.entries(locs).filter(([,v]) => v > 0);
+  const entries = Object.entries(locs).filter(([,v]) => v !== 0);
   if (!entries.length) return '<span style="color:#2a4060;font-size:10px">No stock anywhere</span>';
-  return entries.map(([loc,v]) => `<span style="font-size:${compact?10:11}px;color:#8ab4d8;background:#1a2840;border:1px solid #1e3248;border-radius:5px;padding:1px 6px;margin-right:3px;white-space:nowrap;display:inline-block;margin-bottom:2px">${loc}: <strong style="color:#c8d8e8">${v}</strong></span>`).join('');
+  return entries.map(([loc,v]) => `<span style="font-size:${compact?10:11}px;color:${v<0?'#ff6b6b':'#8ab4d8'};background:${v<0?'#2d0808':'#1a2840'};border:1px solid ${v<0?'#7f1d1d':'#1e3248'};border-radius:5px;padding:1px 6px;margin-right:3px;white-space:nowrap;display:inline-block;margin-bottom:2px">${loc}: <strong style="color:${v<0?'#ff6b6b':'#c8d8e8'}">${v}</strong></span>`).join('');
 }
 function sBadge(s) {
-  const c={in:'s-in',low:'s-low',out:'s-out',ondemand:'s-ondemand'}, l={in:'In Stock',low:'Low Stock',out:'Out of Stock',ondemand:'Order as Needed'};
+  const c={in:'s-in',low:'s-low',out:'s-out',ondemand:'s-ondemand',negative:'s-negative'}, l={in:'In Stock',low:'Low Stock',out:'Out of Stock',ondemand:'Order as Needed',negative:'⚠ Negative'};
   return `<span class="status-chip ${c[s]}">${l[s]}</span>`;
 }
 function bestPrice(sups) {
@@ -1761,12 +1832,14 @@ function renderStats() {
   const tot=items.length, out=items.filter(i=>iStatus(i)==='out').length,
         low=items.filter(i=>iStatus(i)==='low').length, inS=items.filter(i=>iStatus(i)==='in').length,
         onDemand=items.filter(i=>iStatus(i)==='ondemand').length,
+        negative=items.filter(i=>iStatus(i)==='negative').length,
         noBC=items.filter(i=>!i.barcode).length;
   document.getElementById('statsRow').innerHTML = `
     <div class="stat-card info"><div class="sc-label">Total</div><div class="sc-val">${tot}</div></div>
     <div class="stat-card good"><div class="sc-label">In Stock</div><div class="sc-val">${inS}</div></div>
     <div class="stat-card warn"><div class="sc-label">Low</div><div class="sc-val">${low}</div></div>
     <div class="stat-card danger"><div class="sc-label">Out</div><div class="sc-val">${out}</div></div>
+    ${negative > 0 ? `<div class="stat-card" style="border-top-color:#ff4444;cursor:pointer;animation:pulse-negative 2s infinite" onclick="document.getElementById('statusFilter').value='negative';filterAndRender()" title="Click to filter negative stock — check daily"><div class="sc-label">⚠ Negative</div><div class="sc-val" style="color:#ff4444">${negative}</div></div>` : ''}
     ${onDemand > 0 ? `<div class="stat-card" style="border-top-color:#8ab4d8;cursor:pointer" onclick="document.getElementById('statusFilter').value='ondemand';filterAndRender()" title="Click to filter order-on-demand items"><div class="sc-label">Order as Needed</div><div class="sc-val" style="color:#8ab4d8">${onDemand}</div></div>` : ''}
     ${noBC > 0 ? `<div class="stat-card" style="border-top-color:#a855f7;cursor:pointer" onclick="document.getElementById('statusFilter').value='nobarcode';filterAndRender()" title="Click to filter missing barcodes"><div class="sc-label">No Barcode</div><div class="sc-val" style="color:#a855f7">${noBC}</div></div>` : ''}`;
   const n = low+out;
@@ -1784,7 +1857,7 @@ function renderTableBody() {
     const s = iStatus(item);
     const tot = totalQty(item);
     return `<tr>
-      <td><div class="item-name" title="${item.name||''}">${item.name||''}</div>${item.notes?`<div class="item-notes">${item.notes}</div>`:''}</td>
+      <td><div class="item-name" title="${item.name||''}">${item.unregistered?'🚩 ':''}${item.name||''}</div>${item.notes?`<div class="item-notes">${item.notes}</div>`:''}</td>
       <td>
         <div style="font-weight:700;font-size:14px;color:#e8edf2;text-align:center">${tot}</div>
         <div style="margin-top:3px;max-width:170px">${locationBreakdownHtml(item, true)}</div>
@@ -1794,9 +1867,9 @@ function renderTableBody() {
       <td><div class="row-actions">
         ${isAdmin?`<button class="action-btn btn-edit-row" onclick="openEdit('${item.id}')">Edit</button>`:''}
         <button class="action-btn btn-use-row" onclick="openUseStock('${item.id}')">Use</button>
-        <button class="action-btn btn-adj-row" onclick="openAdjust('${item.id}')" title="Correct a quantity">✏️</button>
+        <button class="action-btn btn-adj-row admin-only" style="display:${isAdmin?'':'none'}" onclick="openAdjust('${item.id}')" title="Correct a quantity">✏️</button>
         <button class="action-btn btn-transfer-row" onclick="openTransfer('${item.id}')" title="Transfer between locations">⇄</button>
-        <button class="action-btn btn-return-row" onclick="openReturnStock('${item.id}')" title="Return stock to supplier">↩️</button>
+        <button class="action-btn btn-return-row admin-only" style="display:${isAdmin?'':'none'}" onclick="openReturnStock('${item.id}')" title="Return stock to supplier">↩️</button>
         <button class="action-btn btn-sup-row" onclick="showSuppliers('${item.id}')">↗</button>
         ${isAdmin?`<button class="action-btn btn-del-row" onclick="askDelete('${item.id}')">×</button>`:''}
       </div></td>
@@ -1851,12 +1924,15 @@ async function confirmUseStock() {
   const locs = getLocations(item);
   const available = locs[fromLoc]||0;
   if (qty < 1) { errEl.textContent='Enter at least 1.'; errEl.style.display='block'; return; }
-  if (qty > available) { errEl.textContent=`Only ${available} available at ${fromLoc}.`; errEl.style.display='block'; return; }
+  if (!job) { errEl.textContent='Please enter the job site\'s first line of address and postcode — this is required so material cost can be tracked per job.'; errEl.style.display='block'; return; }
+  if (qty > available) {
+    if (!confirm(`Only ${available} showing at ${fromLoc} — this will take it negative (${available - qty}). Continue anyway? It'll be flagged for admin to check.`)) return;
+  }
   const newLocs = {...locs, [fromLoc]: available - qty};
   document.getElementById('useStockBtn').disabled = true;
   setSync('busy');
   try {
-    await db.collection('items').doc(useStockItemId).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
+    await db.collection('items').doc(useStockItemId).update(locationsUpdatePayload(newLocs));
     await logAction('qty', `Stock used: ${item.name}${job?' ('+job+')':''}`,
       `${currentUser.name} used ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc}${job?' · Job: '+job:''} · ${fromLoc}: ${available} → ${available-qty}`);
     setSync('ok');
@@ -1901,7 +1977,7 @@ async function confirmTransfer() {
   document.getElementById('transferBtn').disabled = true;
   setSync('busy');
   try {
-    await db.collection('items').doc(transferItemId).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
+    await db.collection('items').doc(transferItemId).update(locationsUpdatePayload(newLocs));
     await logAction('qty', `Stock transferred: ${item.name}`,
       `${currentUser.name} moved ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc} to ${toLoc}${note ? ' — Note: ' + note : ''}`);
     setSync('ok');
@@ -1944,7 +2020,7 @@ async function confirmReturnStock() {
   document.getElementById('returnStockBtn').disabled = true;
   setSync('busy');
   try {
-    await db.collection('items').doc(returnItemId).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
+    await db.collection('items').doc(returnItemId).update(locationsUpdatePayload(newLocs));
     await logAction('return', `Returned to supplier: ${item.name}`,
       `${currentUser.name} returned ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc}${supplier?' to '+supplier:''}${reason?' — Reason: '+reason:''} · ${fromLoc}: ${available} → ${available-qty}`);
     setSync('ok');
@@ -2009,10 +2085,7 @@ async function confirmAdjust() {
   document.getElementById('adjustBtn').disabled = true;
   setSync('busy');
   try {
-    await db.collection('items').doc(adjustItemId).update({
-      locations: newLocs,
-      qty: firebase.firestore.FieldValue.delete()
-    });
+    await db.collection('items').doc(adjustItemId).update(locationsUpdatePayload(newLocs));
     const detail = `${currentUser.name} corrected quantities — ${changes.join(', ')}${reason?' · Reason: '+reason:''}`;
     await logAction('edit', `Stock corrected: ${item.name}`, detail);
     setSync('ok');
@@ -2051,6 +2124,114 @@ function renderLocationFields(locs) {
     <div class="field"><label>${loc}</label><input type="number" class="f-loc-input" data-loc="${loc}" min="0" value="${locs[loc]||0}"></div>
   `).join('');
 }
+// Wipes every item's practice ledger back to blank, so it mirrors real stock
+// again on next read — lets a tester start a fresh test run any time.
+async function resetTestData() {
+  if (!currentUser?.isTester) return;
+  if (!confirm('Reset all test data? This clears your practice stock ledger back to match real stock. Your real stock is never touched.')) return;
+  setSync('busy');
+  try {
+    const testItems = items.filter(i => i.testLocations);
+    for (const it of testItems) {
+      await db.collection('items').doc(it.id).update({ testLocations: firebase.firestore.FieldValue.delete() });
+    }
+    setSync('ok');
+    toast(`Test data reset (${testItems.length} item${testItems.length!==1?'s':''} cleared)`, 'success');
+  } catch(e) { setSync('err'); toast('Reset failed: '+e.message, 'error'); }
+}
+
+// ════════════════════════════════════════
+//  UNREGISTERED ITEMS
+// ════════════════════════════════════════
+let unregSource = null; // 'job' or 'scan' — where to return the new item to once logged
+
+function openUnregisteredItemModal(source, prefillName) {
+  unregSource = source;
+  document.getElementById('unreg-name').value = prefillName || '';
+  document.getElementById('unreg-code').value = '';
+  document.getElementById('unreg-qty').value = 1;
+  document.getElementById('unreg-notes').value = '';
+  document.getElementById('unregItemErr').style.display = 'none';
+  const supSel = document.getElementById('unreg-supplier');
+  supSel.innerHTML = '<option value="">Not sure / other</option>' + CATALOG_SUPPLIERS.map(s => `<option value="${s}">${s}</option>`).join('');
+  const locSel = document.getElementById('unreg-location');
+  locSel.innerHTML = LOCATIONS.map(l => `<option value="${l}">${l}</option>`).join('');
+  document.getElementById('unregItemModal').classList.add('open');
+}
+
+async function confirmUnregisteredItem() {
+  const name = document.getElementById('unreg-name').value.trim();
+  const supplier = document.getElementById('unreg-supplier').value;
+  const code = document.getElementById('unreg-code').value.trim();
+  const qty = parseInt(document.getElementById('unreg-qty').value) || 0;
+  const loc = document.getElementById('unreg-location').value;
+  const notes = document.getElementById('unreg-notes').value.trim();
+  const errEl = document.getElementById('unregItemErr');
+  if (!name) { errEl.textContent = 'Please enter an item name.'; errEl.style.display = 'block'; return; }
+  if (qty < 1) { errEl.textContent = 'Enter at least 1.'; errEl.style.display = 'block'; return; }
+  if (!loc) { errEl.textContent = 'Please choose a location.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  document.getElementById('unregItemBtn').disabled = true;
+  setSync('busy');
+  try {
+    const suppliers = {};
+    if (supplier) suppliers[supplier] = { code, price: null, min_order: '' };
+    const barcode = generateBarcodeValue();
+    const isTester = !!currentUser?.isTester;
+    const itemPayload = {
+      name, category: 'Unregistered — Pending Review', mfr_code: '', barcode,
+      locations: isTester ? {} : { [loc]: qty },
+      min_qty: 0, notes, suppliers,
+      unregistered: true, isTestData: isTester, addedBy: currentUser.name,
+      requestedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      syncedToMaster: false
+    };
+    if (isTester) itemPayload.testLocations = { [loc]: qty };
+    const ref = await db.collection('items').add(itemPayload);
+    if (!isTester) {
+      await logAction('add', `Unregistered item logged: ${name}`, `${currentUser.name} logged ${qty} of "${name}" at ${loc} as unregistered — needs admin to complete full details (category, code, pricing)`);
+    }
+    setSync('ok');
+    closeModal('unregItemModal');
+    toast(`Logged — usable now, admin will complete details soon`, 'success');
+
+    const newItem = { id: ref.id, name, barcode };
+    if (unregSource === 'job') {
+      const existing = jobItems.find(j => j.id === newItem.id);
+      if (existing) existing.qty++; else jobItems.push({ id: newItem.id, name: newItem.name, barcode: newItem.barcode, qty: 1 });
+      renderJobItemList();
+      saveDraftToFirestore();
+    } else if (unregSource === 'scan') {
+      showScanAction({ id: ref.id, name, barcode, category: 'Unregistered — Pending Review', locations: isTester ? {} : { [loc]: qty }, testLocations: isTester ? { [loc]: qty } : undefined, suppliers, unregistered: true });
+    }
+  } catch (e) { setSync('err'); errEl.textContent = 'Failed: ' + e.message; errEl.style.display = 'block'; }
+  document.getElementById('unregItemBtn').disabled = false;
+}
+
+function renderUnregisteredBadge() {
+  const el = document.getElementById('unregBadge');
+  if (!el) return;
+  const n = items.filter(i => i.unregistered && !i.isTestData).length;
+  if (n > 0) { el.textContent = n; el.style.display = 'inline'; } else { el.style.display = 'none'; }
+}
+
+function openUnregisteredList() {
+  const pending = items.filter(i => i.unregistered && (!!currentUser?.isTester) === (!!i.isTestData)).sort((a,b) => (b.requestedAt?.toMillis?.()||0) - (a.requestedAt?.toMillis?.()||0));
+  const el = document.getElementById('unregListRows');
+  if (!pending.length) {
+    el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:16px 0">Nothing pending — all items are fully registered.</div>';
+  } else {
+    el.innerHTML = pending.map(it => `
+      <div style="background:#0f1e30;border:1px solid #3a2e10;border-radius:7px;padding:10px 12px;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:700;color:#e8edf2">${it.name}</div>
+        <div style="font-size:11px;color:#4a6880;margin-top:2px">Stock: ${totalQty(it)} · Added by ${it.addedBy||'someone'}${it.requestedAt?.toDate ? ' · ' + fmtDate(it.requestedAt.toDate()) : ''}</div>
+        ${it.notes ? `<div style="font-size:11px;color:#6b8fad;margin-top:3px">${it.notes}</div>` : ''}
+        ${currentUser?.role==='admin' ? `<button class="btn btn-outline" style="padding:4px 9px;font-size:10px;margin-top:7px" onclick="closeModal('unregListModal');openEdit('${it.id}')">Complete details</button>` : ''}
+      </div>`).join('');
+  }
+  document.getElementById('unregListModal').classList.add('open');
+}
+
 function toggleOrderOnDemandHint() {
   document.getElementById('ondemandHint').style.display = document.getElementById('f-ondemand').checked ? 'block' : 'none';
 }
@@ -2095,7 +2276,7 @@ function openAdd() {
 }
 function openEdit(id) {
   const item = items.find(i => i.id===id); editId=id;
-  document.getElementById('modalTitle').textContent = 'Edit Item';
+  document.getElementById('modalTitle').textContent = item.unregistered ? '🚩 Complete Unregistered Item' : 'Edit Item';
   document.getElementById('f-name').value = item.name||'';
   populateCatDropdown(item.category||'');
   document.getElementById('f-newcat').value = '';
@@ -2158,8 +2339,9 @@ async function saveItem() {
   setSync('busy');
   try {
     if (editId) {
-      await db.collection('items').doc(editId).update({...payload, syncedToMaster: false, qty: firebase.firestore.FieldValue.delete()});
-      await logAction('edit', 'Item edited: '+name, 'By '+currentUser.name);
+      const wasUnregistered = items.find(i => i.id === editId)?.unregistered;
+      await db.collection('items').doc(editId).update({...payload, syncedToMaster: false, unregistered: false, qty: firebase.firestore.FieldValue.delete()});
+      await logAction('edit', wasUnregistered ? `Unregistered item completed: ${name}` : 'Item edited: '+name, wasUnregistered ? `${currentUser.name} filled in full details — no longer flagged as unregistered` : 'By '+currentUser.name);
     } else {
       const ref = await db.collection('items').add(payload);
       await logAction('add', 'Item added: '+name, 'By '+currentUser.name);
@@ -2363,7 +2545,7 @@ function renderAdminPanel() {
     <div class="user-row">
       <div style="display:flex;align-items:center;gap:9px">
         <div style="width:32px;height:32px;background:${u.color}25;color:${u.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0">${u.initials||u.name.substring(0,2).toUpperCase()}</div>
-        <div><div style="font-weight:600;color:#e8edf2;font-size:13px">${u.name}</div><span class="role-badge role-${u.role}">${u.role}</span><div style="font-size:10px;color:#4a6880;margin-top:2px">${lastSeen}</div></div>
+        <div><div style="font-weight:600;color:#e8edf2;font-size:13px">${u.name}</div><span class="role-badge role-${u.role}">${u.role}</span>${u.isTester?' <span style="background:#3a2e00;color:#ffd166;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">🧪 TESTER</span>':''}<div style="font-size:10px;color:#4a6880;margin-top:2px">${lastSeen}</div></div>
       </div>
       <div style="display:flex;gap:5px">
         <button class="btn btn-outline" style="padding:4px 8px;font-size:11px" onclick="openEditUser('${u.id}')">Change PIN</button>
@@ -2423,6 +2605,7 @@ function openAddUser() {
   editUserId=null;
   document.getElementById('addUserTitle').textContent='Add User';
   document.getElementById('au-name').value=''; document.getElementById('au-pin').value=''; document.getElementById('au-role').value='engineer';
+  document.getElementById('au-tester').checked=false;
   document.getElementById('auErr').style.display='none';
   document.getElementById('addUserModal').classList.add('open');
 }
@@ -2430,6 +2613,7 @@ function openEditUser(id) {
   editUserId=id; const u=users.find(x=>x.id===id);
   document.getElementById('addUserTitle').textContent='Change PIN — '+u.name;
   document.getElementById('au-name').value=u.name; document.getElementById('au-pin').value=''; document.getElementById('au-role').value=u.role;
+  document.getElementById('au-tester').checked=!!u.isTester;
   document.getElementById('auErr').style.display='none';
   document.getElementById('addUserModal').classList.add('open');
 }
@@ -2437,16 +2621,17 @@ async function saveUser() {
   const name=document.getElementById('au-name').value.trim();
   const pin=document.getElementById('au-pin').value.trim();
   const role=document.getElementById('au-role').value;
+  const isTester=document.getElementById('au-tester').checked;
   if (!name||pin.length!==4||!/^\d{4}$/.test(pin)) { document.getElementById('auErr').style.display='block'; return; }
   const colors=['#3a7bd5','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4'];
   setSync('busy');
   try {
     if (editUserId) {
-      await db.collection('users').doc(editUserId).update({name,pin,role});
-      users = users.map(u => u.id===editUserId ? {...u,name,pin,role} : u);
+      await db.collection('users').doc(editUserId).update({name,pin,role,isTester});
+      users = users.map(u => u.id===editUserId ? {...u,name,pin,role,isTester} : u);
     } else {
-      const ref = await db.collection('users').add({name,pin,role,color:colors[users.length%colors.length],initials:name.substring(0,2).toUpperCase()});
-      users.push({id:ref.id,name,pin,role,color:colors[users.length%colors.length],initials:name.substring(0,2).toUpperCase()});
+      const ref = await db.collection('users').add({name,pin,role,isTester,color:colors[users.length%colors.length],initials:name.substring(0,2).toUpperCase()});
+      users.push({id:ref.id,name,pin,role,isTester,color:colors[users.length%colors.length],initials:name.substring(0,2).toUpperCase()});
     }
     setSync('ok');
     renderAdminPanel(); renderLoginUsers();
@@ -2905,7 +3090,7 @@ async function updateStockTakeQty(itemId, loc, val) {
   }
   setSync('busy');
   try {
-    await db.collection('items').doc(itemId).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
+    await db.collection('items').doc(itemId).update(locationsUpdatePayload(newLocs));
     await logAction('qty', `Stock take update: ${item.name}`, `${currentUser.name} corrected ${loc} from ${oldVal} to ${newVal} during stock take`);
     stockTakeChecked[itemId] = true;
     saveStockTakeProgress();
@@ -4298,9 +4483,10 @@ function onScanNameSearchInput(query) {
   const q = query.trim().toLowerCase();
   if (!q) { resultsEl.style.display = 'none'; return; }
   const matches = items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 8);
-  resultsEl.innerHTML = matches.length
-    ? matches.map(it => `<div onmousedown="selectScanNameSearchItem('${it.id}')" style="padding:9px 10px;cursor:pointer;font-size:13px;color:#e8edf2;border-bottom:1px solid #0f1923" onmouseover="this.style.background='#0f1923'" onmouseout="this.style.background=''">${it.name}</div>`).join('')
-    : '<div style="padding:9px 10px;font-size:12px;color:#4a6880">No matches</div>';
+  let html = matches.map(it => `<div onmousedown="selectScanNameSearchItem('${it.id}')" style="padding:9px 10px;cursor:pointer;font-size:13px;color:#e8edf2;border-bottom:1px solid #0f1923" onmouseover="this.style.background='#0f1923'" onmouseout="this.style.background=''">${it.name}</div>`).join('');
+  if (!matches.length) html += '<div style="padding:9px 10px;font-size:12px;color:#4a6880">No matches</div>';
+  html += `<div onmousedown="openUnregisteredItemModal('scan', '${query.replace(/'/g,"\\'")}')" style="padding:9px 10px;cursor:pointer;font-size:12px;color:#f0a020;font-weight:600;border-top:1px solid #0f1923">🚩 Can't find it? Log Unregistered Item...</div>`;
+  resultsEl.innerHTML = html;
   resultsEl.style.display = 'block';
 }
 
@@ -4353,7 +4539,7 @@ function showScanAction(item) {
         <div class="field"><label>Quantity *</label><input type="number" id="scan-qty" min="1" value="1" inputmode="numeric"></div>
       </div>
       <div class="form-row full">
-        <div class="field"><label>Job reference (optional)</label><input type="text" id="scan-job" placeholder="e.g. Job #1042"></div>
+        <div class="field"><label>Job site (first line + postcode) *</label><input type="text" id="scan-job" placeholder="e.g. 10 Barnside Way, SK10 2TZ"></div>
       </div>
       <p class="err-msg" id="scanActionErr"></p>
       <div class="modal-footer">
@@ -4411,11 +4597,14 @@ async function confirmScanUse(itemId) {
   const locs = getLocations(item);
   const available = locs[loc]||0;
   if (qty < 1) { errEl.textContent='Enter at least 1.'; errEl.style.display='block'; return; }
-  if (qty > available) { errEl.textContent=`Only ${available} at ${loc}.`; errEl.style.display='block'; return; }
+  if (!job) { errEl.textContent='Please enter the job site\'s first line of address and postcode — this is required so material cost can be tracked per job.'; errEl.style.display='block'; return; }
+  if (qty > available) {
+    if (!confirm(`Only ${available} showing at ${loc} — this will take it negative (${available - qty}). Continue anyway? It'll be flagged for admin to check.`)) return;
+  }
   const newLocs = {...locs, [loc]: available - qty};
   setSync('busy');
   try {
-    await db.collection('items').doc(itemId).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
+    await db.collection('items').doc(itemId).update(locationsUpdatePayload(newLocs));
     await logAction('qty', `Stock used (scan): ${item.name}${job?' ('+job+')':''}`,
       `${currentUser.name} scanned & used ${qty} from ${loc}${job?' · Job: '+job:''} · ${available}→${available-qty}`);
     setSync('ok');
@@ -4436,7 +4625,7 @@ async function confirmScanAdd(itemId) {
   const newLocs = {...locs, [loc]: current + qty};
   setSync('busy');
   try {
-    await db.collection('items').doc(itemId).update({ locations: newLocs, qty: firebase.firestore.FieldValue.delete() });
+    await db.collection('items').doc(itemId).update(locationsUpdatePayload(newLocs));
     await logAction('qty', `Stock added (scan): ${item.name}`,
       `${currentUser.name} scanned & added ${qty} to ${loc} · ${current}→${current+qty}`);
     setSync('ok');
@@ -4603,7 +4792,7 @@ async function saveDraftToFirestore() {
 // ── Start / Resume / Discard ──
 function startJob() {
   const addr = document.getElementById('jobAddressInput').value.trim();
-  if (!addr) { toast('Please enter a site address', 'error'); return; }
+  if (!addr) { toast('Please enter the job site\'s first line of address and postcode', 'error'); return; }
   jobAddress = addr;
   jobItems = [];
   jobDraftId = null;
@@ -4706,9 +4895,10 @@ function onJobNameSearchInput(query) {
   const q = query.trim().toLowerCase();
   if (!q) { resultsEl.style.display = 'none'; return; }
   const matches = items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 8);
-  resultsEl.innerHTML = matches.length
-    ? matches.map(it => `<div onmousedown="selectJobNameSearchItem('${it.id}')" style="padding:8px 10px;cursor:pointer;font-size:12px;color:#e8edf2;border-bottom:1px solid #0f1e30" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('')
-    : '<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches</div>';
+  let html = matches.map(it => `<div onmousedown="selectJobNameSearchItem('${it.id}')" style="padding:8px 10px;cursor:pointer;font-size:12px;color:#e8edf2;border-bottom:1px solid #0f1e30" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('');
+  if (!matches.length) html += '<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches</div>';
+  html += `<div onmousedown="openUnregisteredItemModal('job', '${query.replace(/'/g,"\\'")}')" style="padding:8px 10px;cursor:pointer;font-size:11px;color:#f0a020;font-weight:600;border-top:1px solid #0f1e30">🚩 Can't find it? Log Unregistered Item...</div>`;
+  resultsEl.innerHTML = html;
   resultsEl.style.display = 'block';
 }
 
@@ -4821,23 +5011,20 @@ async function completeJob() {
 
   stopJobScanner();
   const vanLocation = currentUser.name + "'s Van";
-  const errors = [];
 
   try {
     setSync('busy');
+    const wentNegative = [];
     for (const ji of jobItems) {
       const item = items.find(i => i.id === ji.id);
-      if (!item) { errors.push(ji.name + ' not found'); continue; }
+      if (!item) continue;
       const locs = getLocations(item);
       const vanQty = locs[vanLocation] || 0;
-      if (vanQty < ji.qty) {
-        errors.push(`${ji.name}: only ${vanQty} in van (need ${ji.qty})`);
-        continue;
-      }
       const newLocs = {...locs};
       newLocs[vanLocation] = vanQty - ji.qty;
+      if (newLocs[vanLocation] < 0) wentNegative.push(`${ji.name} (${vanLocation}: ${newLocs[vanLocation]})`);
       if (newLocs[vanLocation] === 0) delete newLocs[vanLocation];
-      await db.collection('items').doc(ji.id).update({ locations: newLocs });
+      await db.collection('items').doc(ji.id).update(locationsUpdatePayload(newLocs));
     }
 
     // Save completed job to Firestore
@@ -4848,6 +5035,7 @@ async function completeJob() {
       engineerName: currentUser.name,
       vanLocation,
       status: 'completed',
+      isTestData: !!currentUser?.isTester,
       completedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -4857,13 +5045,16 @@ async function completeJob() {
       await db.collection('jobs').add({...jobPayload, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
     }
 
-    await logAction('job', `Job completed: ${jobAddress}`,
-      `${currentUser.name} used ${jobItems.reduce((s,i)=>s+i.qty,0)} items — ${jobItems.map(i=>i.name+'×'+i.qty).join(', ')}`);
+    if (!currentUser?.isTester) {
+      await logAction('job', `Job completed: ${jobAddress}`,
+        `${currentUser.name} used ${jobItems.reduce((s,i)=>s+i.qty,0)} items — ${jobItems.map(i=>i.name+'×'+i.qty).join(', ')}`);
+    }
 
     setSync('ok');
-    if (errors.length) {
-      toast(`Job completed with ${errors.length} issue(s) — check log`, 'error');
-      console.warn('Job errors:', errors);
+    if (wentNegative.length) {
+      toast(`Job completed — ${wentNegative.length} item(s) went negative, flagged for review`, 'error');
+      console.warn('Went negative:', wentNegative);
+      if (!currentUser?.isTester) await logAction('edit', `Negative stock from job: ${jobAddress}`, `${currentUser.name}'s job took these below zero — needs restocking or correcting: ${wentNegative.join(', ')}`);
     } else {
       toast('Job complete! Now allocate any leftover stock.', 'success');
     }
