@@ -391,6 +391,7 @@ td{padding:8px 9px;vertical-align:middle}
     <div class="inv-actions">
       <button class="btn btn-primary admin-only" onclick="openAdd()" style="display:none;padding:6px 12px;font-size:12px">+ Add Item</button>
       <button class="btn btn-outline" style="padding:6px 11px;font-size:12px" onclick="openReorderList()">🛒 Reorder List</button>
+      <button class="btn btn-outline" style="padding:6px 11px;font-size:12px" onclick="openRecentTransfers()">🔄 Recent Transfers</button>
       <button class="btn btn-outline admin-only" style="display:none;padding:6px 11px;font-size:12px" onclick="exportCSV()">↓ CSV</button>
     </div>
     <div class="table-container">
@@ -726,6 +727,11 @@ td{padding:8px 9px;vertical-align:middle}
         </details>
       </div>
       <div class="admin-section">
+        <h3>↩️ Returns History</h3>
+        <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Every stock return, with the reason, reference number, and proof photo attached.</p>
+        <button class="btn btn-outline" style="padding:7px 13px;font-size:12px" onclick="openReturnsHistory()">View Returns History</button>
+      </div>
+      <div class="admin-section">
         <h3>🧹 Clean Up Duplicate Items</h3>
         <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Finds items with identical names — useful after a sync that may have created duplicates. Any stock on a duplicate gets merged into the one you keep, nothing is lost.</p>
         <button class="btn btn-warn" style="padding:7px 13px;font-size:12px" onclick="findDuplicateItems()">🔍 Scan for Duplicates</button>
@@ -781,7 +787,8 @@ td{padding:8px 9px;vertical-align:middle}
 <div class="overlay" id="unregItemModal" onclick="if(event.target===this)closeModal('unregItemModal')">
   <div class="modal sm">
     <h2 style="font-size:14px;margin-bottom:4px">🚩 Log Unregistered Item</h2>
-    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">For something not in the system yet. It's usable straight away — an admin will fill in the full details (category, barcode, pricing) within 24hrs.</p>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:10px">For something not in the system yet. It's usable straight away — an admin will fill in the full details (category, barcode, pricing) within 24hrs.</p>
+    <div id="unregJobContext" style="display:none;background:#0f2e1a;border:1px solid #1e4a2e;border-radius:6px;padding:7px 10px;margin-bottom:14px;font-size:11px;color:#5fd88a"></div>
     <div class="form-row full" style="margin-bottom:10px">
       <div class="field"><label>Item Name *</label><input type="text" id="unreg-name" placeholder="e.g. 28mm Compression Elbow"></div>
     </div>
@@ -1175,13 +1182,17 @@ td{padding:8px 9px;vertical-align:middle}
 <div class="overlay" id="transferModal">
   <div class="modal sm">
     <h2>⇄ Transfer Stock</h2>
+    <div id="transferJobContext" style="display:none;background:#0f2e1a;border:1px solid #1e4a2e;border-radius:6px;padding:7px 10px;margin-bottom:10px;font-size:11px;color:#5fd88a"></div>
     <div style="background:#1a2840;border-radius:7px;padding:11px 13px;margin-bottom:13px">
       <div style="font-weight:700;color:#e8edf2;font-size:13px" id="transferItemName"></div>
       <div style="font-size:12px;color:#4a6880;margin-top:5px" id="transferLocBreakdown"></div>
     </div>
     <div class="form-row" style="margin-bottom:10px">
-      <div class="field"><label>From *</label><select id="tr-from"></select></div>
-      <div class="field"><label>To *</label><select id="tr-to"></select></div>
+      <div class="field"><label>From *</label><select id="tr-from" onchange="onTransferDirectionChange()"></select></div>
+      <div class="field"><label>To *</label><select id="tr-to" onchange="onTransferDirectionChange()"></select></div>
+    </div>
+    <div id="transferVanYardReminder" style="display:none;background:#3a2e00;border:1px solid #5a4400;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#ffd166">
+      💡 Moving more than just this item? Remember to transfer anything else you're physically carrying over too — the app only updates what you record here.
     </div>
     <div class="form-row full" style="margin-bottom:10px">
       <div class="field"><label>Quantity to transfer *</label><input type="number" id="tr-qty" min="1" value="1" inputmode="numeric"></div>
@@ -1219,6 +1230,28 @@ td{padding:8px 9px;vertical-align:middle}
 </div>
 
 <!-- Return to Supplier -->
+<!-- Returns History -->
+<div class="overlay" id="returnsHistoryModal" onclick="if(event.target===this)closeModal('returnsHistoryModal')">
+  <div class="modal" style="max-width:640px;max-height:85vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:12px">↩️ Returns History</h2>
+    <div id="returnsHistoryRows"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('returnsHistoryModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Transfers -->
+<div class="overlay" id="recentTransfersModal" onclick="if(event.target===this)closeModal('recentTransfersModal')">
+  <div class="modal" style="max-width:600px;max-height:85vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:12px">🔄 Recent Transfers</h2>
+    <div id="recentTransfersRows"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('recentTransfersModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="returnStockModal">
   <div class="modal sm">
     <h2>↩️ Return to Supplier</h2>
@@ -1236,8 +1269,19 @@ td{padding:8px 9px;vertical-align:middle}
     <div class="form-row full" style="margin-bottom:10px">
       <div class="field"><label>Supplier</label><select id="ret-supplier"></select></div>
     </div>
+    <div class="form-row full" style="margin-bottom:10px">
+      <div class="field"><label>Reason for return *</label><input type="text" id="ret-reason" placeholder="e.g. Faulty, wrong item sent, over-ordered"></div>
+    </div>
+    <div class="form-row full" style="margin-bottom:10px">
+      <div class="field"><label>Return reference number *</label><input type="text" id="ret-refnum" placeholder="RMA / returns number from the supplier"></div>
+    </div>
     <div class="form-row full">
-      <div class="field"><label>Reason (optional)</label><input type="text" id="ret-reason" placeholder="e.g. Faulty, wrong item sent, over-ordered"></div>
+      <div class="field">
+        <label>Proof of return (credit note / photo) *</label>
+        <input type="file" id="ret-photo-input" accept="image/*" capture="environment" multiple style="display:none" onchange="onReturnPhotoSelected(this.files)">
+        <button type="button" class="btn btn-outline" style="width:100%;padding:9px;font-size:12px" onclick="document.getElementById('ret-photo-input').click()">📷 Add Photo</button>
+        <div id="retPhotoPreview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
+      </div>
     </div>
     <p class="err-msg" id="returnStockErr"></p>
     <div class="modal-footer">
@@ -1808,7 +1852,7 @@ function getFiltered() {
   const st=document.getElementById('statusFilter')?.value||'';
   let list = items.filter(i => {
     const mq = !q || (i.name||'').toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q) ||
-      (i.mfr_code||'').toLowerCase().includes(q) ||
+      (i.mfr_code||'').toLowerCase().includes(q) || (i.notes||'').toLowerCase().includes(q) ||
       Object.keys(i.suppliers||{}).some(s => s.toLowerCase().includes(q)) ||
       Object.values(i.suppliers||{}).some(s => (s.code||'').toLowerCase().includes(q));
     return mq && (!cat || i.category===cat) && (!st || (st === 'nobarcode' ? !i.barcode : iStatus(i)===st));
@@ -1946,11 +1990,58 @@ async function confirmUseStock() {
 //  TRANSFER STOCK
 // ════════════════════════════════════════
 let transferItemId = null;
+async function openRecentTransfers() {
+  const el = document.getElementById('recentTransfersRows');
+  el.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">Loading...</div>';
+  document.getElementById('recentTransfersModal').classList.add('open');
+  try {
+    const snap = await db.collection('transfers').orderBy('transferredAt','desc').limit(30).get();
+    const rows = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(r => (!!currentUser?.isTester) === (!!r.isTestData));
+    if (!rows.length) {
+      el.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">No transfers recorded yet.</div>';
+      return;
+    }
+    el.innerHTML = rows.map(r => `
+      <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:8px;padding:10px 13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:700;color:#e8edf2;font-size:13px">${r.qty}× ${r.itemName}</div>
+          <div style="font-size:11px;color:#6b8fad;margin-top:2px">${r.fromLoc} → ${r.toLoc} · ${r.transferredBy}${r.transferredAt?.toDate ? ' · '+fmtDate(r.transferredAt.toDate()) : ''}</div>
+          ${r.note ? `<div style="font-size:11px;color:#4a6880;margin-top:2px">${r.note}</div>` : ''}
+        </div>
+        <button class="btn btn-outline" style="padding:5px 10px;font-size:11px;white-space:nowrap" onclick="reverseTransfer('${r.itemId}','${r.toLoc.replace(/'/g,"\\'")}','${r.fromLoc.replace(/'/g,"\\'")}',${r.qty})">↩ Reverse</button>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<div style="color:#ff6b6b;font-size:12px">Failed to load: ${e.message}</div>`; }
+}
+
+function reverseTransfer(itemId, fromLoc, toLoc, qty) {
+  closeModal('recentTransfersModal');
+  const item = items.find(i => i.id === itemId);
+  if (!item) { toast('That item no longer exists', 'error'); return; }
+  openTransfer(itemId);
+  setTimeout(() => {
+    document.getElementById('tr-from').value = fromLoc;
+    document.getElementById('tr-to').value = toLoc;
+    document.getElementById('tr-qty').value = qty;
+    document.getElementById('tr-note').value = 'Reversing an earlier transfer';
+    onTransferDirectionChange();
+  }, 0);
+}
+
+function onTransferDirectionChange() {
+  const fromLoc = document.getElementById('tr-from').value;
+  const toLoc = document.getElementById('tr-to').value;
+  const isVanToYard = fromLoc.includes('Van') && toLoc === 'Yard';
+  document.getElementById('transferVanYardReminder').style.display = isVanToYard ? 'block' : 'none';
+}
+
 function openTransfer(id) {
   const item = items.find(i => i.id===id); if (!item) return;
   transferItemId = id;
   document.getElementById('transferItemName').textContent = item.name;
   document.getElementById('transferLocBreakdown').innerHTML = locationBreakdownHtml(item, false);
+  const jobCtx = document.getElementById('transferJobContext');
+  if (jobActive && jobAddress) { jobCtx.textContent = `🔧 Active job: ${jobAddress}`; jobCtx.style.display = 'block'; }
+  else { jobCtx.style.display = 'none'; }
   const locs = getLocations(item);
   const fromSel = document.getElementById('tr-from'), toSel = document.getElementById('tr-to');
   fromSel.innerHTML = LOCATIONS.map(l => `<option value="${l}">${l} (${locs[l]||0} available)</option>`).join('');
@@ -1959,6 +2050,7 @@ function openTransfer(id) {
   document.getElementById('tr-qty').value = 1;
   document.getElementById('tr-note').value = '';
   document.getElementById('transferErr').style.display = 'none';
+  onTransferDirectionChange();
   document.getElementById('transferModal').classList.add('open');
 }
 async function confirmTransfer() {
@@ -1978,8 +2070,15 @@ async function confirmTransfer() {
   setSync('busy');
   try {
     await db.collection('items').doc(transferItemId).update(locationsUpdatePayload(newLocs));
-    await logAction('qty', `Stock transferred: ${item.name}`,
-      `${currentUser.name} moved ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc} to ${toLoc}${note ? ' — Note: ' + note : ''}`);
+    await db.collection('transfers').add({
+      itemId: transferItemId, itemName: item.name, qty, fromLoc, toLoc, note,
+      transferredBy: currentUser.name, transferredAt: firebase.firestore.FieldValue.serverTimestamp(),
+      isTestData: !!currentUser?.isTester
+    });
+    if (!currentUser?.isTester) {
+      await logAction('qty', `Stock transferred: ${item.name}`,
+        `${currentUser.name} moved ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc} to ${toLoc}${note ? ' — Note: ' + note : ''}`);
+    }
     setSync('ok');
     closeModal('transferModal');
     toast(`${qty}× ${item.name} moved: ${fromLoc} → ${toLoc}`, 'success');
@@ -1989,6 +2088,73 @@ async function confirmTransfer() {
 
 // ── Return to Supplier ──
 let returnItemId = null;
+// ════════════════════════════════════════
+//  RETURN TO SUPPLIER — PROOF PHOTO UPLOADS
+// ════════════════════════════════════════
+let retPhotoFiles = []; // Files staged before confirm
+
+function onReturnPhotoSelected(fileList) {
+  const preview = document.getElementById('retPhotoPreview');
+  for (const file of fileList) {
+    if (!file.type.startsWith('image/')) continue;
+    retPhotoFiles.push(file);
+    const url = URL.createObjectURL(file);
+    const div = document.createElement('div');
+    div.style.cssText = 'position:relative;width:70px;height:70px';
+    div.innerHTML = `<img src="${url}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid #2a4060">
+      <button onclick="removeReturnPhoto(this, '${url}')" style="position:absolute;top:-4px;right:-4px;background:#3a1010;border:none;color:#ff6b6b;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:10px;line-height:1">✕</button>`;
+    preview.appendChild(div);
+  }
+  document.getElementById('ret-photo-input').value = '';
+}
+
+function removeReturnPhoto(btn, url) {
+  const div = btn.parentElement;
+  const idx = [...document.getElementById('retPhotoPreview').children].indexOf(div);
+  if (idx > -1) retPhotoFiles.splice(idx, 1);
+  URL.revokeObjectURL(url);
+  div.remove();
+}
+
+async function uploadReturnPhotos(returnRefForPath) {
+  if (!retPhotoFiles.length || !storage) return [];
+  const urls = [];
+  for (let i = 0; i < retPhotoFiles.length; i++) {
+    const file = retPhotoFiles[i];
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `returns/${returnRefForPath}/photo_${Date.now()}_${i}.${ext}`;
+    const ref = storage.ref(path);
+    await ref.put(file);
+    urls.push(await ref.getDownloadURL());
+  }
+  return urls;
+}
+
+async function openReturnsHistory() {
+  const el = document.getElementById('returnsHistoryRows');
+  el.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">Loading...</div>';
+  document.getElementById('returnsHistoryModal').classList.add('open');
+  try {
+    const snap = await db.collection('returns').orderBy('returnedAt','desc').limit(100).get();
+    const rows = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(r => !r.isTestData);
+    if (!rows.length) {
+      el.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">No returns recorded yet.</div>';
+      return;
+    }
+    el.innerHTML = rows.map(r => `
+      <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:8px;padding:12px 14px;margin-bottom:9px">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <div style="font-weight:700;color:#e8edf2;font-size:13px">${r.qty}× ${r.itemName}</div>
+          <div style="font-size:11px;color:#4a6880">${r.returnedAt?.toDate ? fmtDate(r.returnedAt.toDate()) : ''}</div>
+        </div>
+        <div style="font-size:11px;color:#6b8fad;margin-top:4px">From ${r.location}${r.supplier?' → '+r.supplier:''} · By ${r.returnedBy}</div>
+        <div style="font-size:11px;color:#8ab4d8;margin-top:4px"><strong>Reason:</strong> ${r.reason||'—'}</div>
+        <div style="font-size:11px;color:#8ab4d8;margin-top:2px"><strong>Ref:</strong> ${r.refNum||'—'}</div>
+        ${r.photoUrls?.length ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${r.photoUrls.map(u=>`<a href="${u}" target="_blank"><img src="${u}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #2a4060"></a>`).join('')}</div>` : ''}
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<div style="color:#ff6b6b;font-size:12px">Failed to load: ${e.message}</div>`; }
+}
+
 function openReturnStock(id) {
   const item = items.find(i => i.id===id); if (!item) return;
   returnItemId = id;
@@ -2002,6 +2168,9 @@ function openReturnStock(id) {
   supSel.innerHTML = (supNames.length ? supNames.map(s => `<option value="${s}">${s}</option>`).join('') : '') + '<option value="">Other / not listed</option>';
   document.getElementById('ret-qty').value = 1;
   document.getElementById('ret-reason').value = '';
+  document.getElementById('ret-refnum').value = '';
+  document.getElementById('retPhotoPreview').innerHTML = '';
+  retPhotoFiles = [];
   document.getElementById('returnStockErr').style.display = 'none';
   document.getElementById('returnStockModal').classList.add('open');
 }
@@ -2011,18 +2180,31 @@ async function confirmReturnStock() {
   const fromLoc = document.getElementById('ret-location').value;
   const supplier = document.getElementById('ret-supplier').value;
   const reason = document.getElementById('ret-reason').value.trim();
+  const refNum = document.getElementById('ret-refnum').value.trim();
   const errEl = document.getElementById('returnStockErr');
   const locs = getLocations(item);
   const available = locs[fromLoc]||0;
   if (qty < 1) { errEl.textContent='Enter at least 1.'; errEl.style.display='block'; return; }
   if (qty > available) { errEl.textContent=`Only ${available} available at ${fromLoc}.`; errEl.style.display='block'; return; }
+  if (!reason) { errEl.textContent='Please enter a reason for the return.'; errEl.style.display='block'; return; }
+  if (!refNum) { errEl.textContent='Please enter the return reference number.'; errEl.style.display='block'; return; }
+  if (!retPhotoFiles.length) { errEl.textContent='Please attach at least one photo of the credit note / proof of return.'; errEl.style.display='block'; return; }
   const newLocs = {...locs, [fromLoc]: available - qty};
   document.getElementById('returnStockBtn').disabled = true;
   setSync('busy');
   try {
+    const returnRef = db.collection('returns').doc();
+    const photoUrls = await uploadReturnPhotos(returnRef.id);
+    await returnRef.set({
+      itemId: returnItemId, itemName: item.name, qty, location: fromLoc, supplier, reason, refNum, photoUrls,
+      returnedBy: currentUser.name, returnedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      isTestData: !!currentUser?.isTester
+    });
     await db.collection('items').doc(returnItemId).update(locationsUpdatePayload(newLocs));
-    await logAction('return', `Returned to supplier: ${item.name}`,
-      `${currentUser.name} returned ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc}${supplier?' to '+supplier:''}${reason?' — Reason: '+reason:''} · ${fromLoc}: ${available} → ${available-qty}`);
+    if (!currentUser?.isTester) {
+      await logAction('return', `Returned to supplier: ${item.name}`,
+        `${currentUser.name} returned ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc}${supplier?' to '+supplier:''} — Reason: ${reason} · Ref: ${refNum} · ${fromLoc}: ${available} → ${available-qty}`);
+    }
     setSync('ok');
     closeModal('returnStockModal');
     toast(`${qty}× ${item.name} marked as returned to ${supplier||'supplier'}`, 'success');
@@ -2152,6 +2334,9 @@ function openUnregisteredItemModal(source, prefillName) {
   document.getElementById('unreg-qty').value = 1;
   document.getElementById('unreg-notes').value = '';
   document.getElementById('unregItemErr').style.display = 'none';
+  const jobCtx = document.getElementById('unregJobContext');
+  if (jobActive && jobAddress) { jobCtx.textContent = `🔧 Active job: ${jobAddress}`; jobCtx.style.display = 'block'; }
+  else { jobCtx.style.display = 'none'; }
   const supSel = document.getElementById('unreg-supplier');
   supSel.innerHTML = '<option value="">Not sure / other</option>' + CATALOG_SUPPLIERS.map(s => `<option value="${s}">${s}</option>`).join('');
   const locSel = document.getElementById('unreg-location');
@@ -2987,7 +3172,12 @@ async function openStockTake(location) {
   try {
     let inProgress = await getInProgressStockTake(currentStockTakeLocation);
     if (!inProgress) {
-      // Start a brand new cycle for this location (or the whole business if none given)
+      // Only admins can kick off a brand new stock take cycle — anyone can still
+      // continue one that's already running (started by an admin earlier).
+      if (currentUser?.role !== 'admin') {
+        toast('Only Rachel or Dan can start a new stock take — ask them to kick this one off, then anyone can continue it', 'error');
+        return;
+      }
       const ref = await db.collection('stocktakes').add({
         startedAt: firebase.firestore.FieldValue.serverTimestamp(),
         startedBy: currentUser.name,
@@ -3003,9 +3193,33 @@ async function openStockTake(location) {
       stockTakeChecked = {...(inProgress.checkedItems||{})};
       stockTakeExtra = {...(inProgress.extraItems||{})};
     }
+    await loadPreviousStockTakeQtys(currentStockTakeLocation);
   } catch(e) { stockTakeChecked = {}; toast('Could not start stock take: '+e.message, 'error'); return; }
   renderStockTakeList();
   document.getElementById('stockTakeModal').classList.add('open');
+}
+
+// Pulls the corrected quantities from the last completed stock take for this
+// location, so people can see "last time this was X" while counting now.
+let previousStockTakeQtyMap = {};
+async function loadPreviousStockTakeQtys(location) {
+  previousStockTakeQtyMap = {};
+  try {
+    const snap = await db.collection('stocktakes').where('completed','==',true).orderBy('completedAt','desc').limit(15).get();
+    const prev = snap.docs.map(d=>({id:d.id,...d.data()})).find(s => (s.location||null) === (location||null));
+    if (!prev) return;
+    const startTs = prev.startedAt, endTs = prev.completedAt || firebase.firestore.Timestamp.now();
+    const logSnap = await db.collection('log').where('ts','>=',startTs).where('ts','<=',endTs).orderBy('ts').get();
+    const byName = {};
+    logSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.type !== 'qty' || !d.title?.startsWith('Stock take update:')) return;
+      const itemName = d.title.replace('Stock take update:','').trim();
+      const m = d.detail?.match(/from (\d+) to (\d+) during stock take$/);
+      if (m) byName[itemName] = parseInt(m[2]);
+    });
+    items.forEach(it => { if (byName[it.name] !== undefined) previousStockTakeQtyMap[it.id] = byName[it.name]; });
+  } catch(e) { console.warn('Could not load previous stock take data:', e); }
 }
 
 function renderStockTakeList() {
@@ -3042,7 +3256,7 @@ function renderStockTakeList() {
       <div class="st-check${isChecked?' done':''}" onclick="toggleStockTakeCheck('${item.id}')">${isChecked?'✓':''}</div>
       <div class="st-info">
         <div class="st-name">${item.name||''}</div>
-        <div class="st-cat">${item.category||''} · <span class="st-qty-old">total ${totalQty(item)}</span></div>
+        <div class="st-cat">${item.category||''} · <span class="st-qty-old">total ${totalQty(item)}</span>${previousStockTakeQtyMap[item.id]!==undefined?` · <span style="color:#8ab4d8">last time: ${previousStockTakeQtyMap[item.id]}</span>`:''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">${locInputs}</div>
     </div>`;
@@ -4482,7 +4696,7 @@ function onScanNameSearchInput(query) {
   const resultsEl = document.getElementById('scanNameSearchResults');
   const q = query.trim().toLowerCase();
   if (!q) { resultsEl.style.display = 'none'; return; }
-  const matches = items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 8);
+  const matches = items.filter(it => it.name.toLowerCase().includes(q) || (it.notes||'').toLowerCase().includes(q)).slice(0, 8);
   let html = matches.map(it => `<div onmousedown="selectScanNameSearchItem('${it.id}')" style="padding:9px 10px;cursor:pointer;font-size:13px;color:#e8edf2;border-bottom:1px solid #0f1923" onmouseover="this.style.background='#0f1923'" onmouseout="this.style.background=''">${it.name}</div>`).join('');
   if (!matches.length) html += '<div style="padding:9px 10px;font-size:12px;color:#4a6880">No matches</div>';
   html += `<div onmousedown="openUnregisteredItemModal('scan', '${query.replace(/'/g,"\\'")}')" style="padding:9px 10px;cursor:pointer;font-size:12px;color:#f0a020;font-weight:600;border-top:1px solid #0f1923">🚩 Can't find it? Log Unregistered Item...</div>`;
@@ -4894,7 +5108,7 @@ function onJobNameSearchInput(query) {
   const resultsEl = document.getElementById('jobNameSearchResults');
   const q = query.trim().toLowerCase();
   if (!q) { resultsEl.style.display = 'none'; return; }
-  const matches = items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 8);
+  const matches = items.filter(it => it.name.toLowerCase().includes(q) || (it.notes||'').toLowerCase().includes(q)).slice(0, 8);
   let html = matches.map(it => `<div onmousedown="selectJobNameSearchItem('${it.id}')" style="padding:8px 10px;cursor:pointer;font-size:12px;color:#e8edf2;border-bottom:1px solid #0f1e30" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('');
   if (!matches.length) html += '<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches</div>';
   html += `<div onmousedown="openUnregisteredItemModal('job', '${query.replace(/'/g,"\\'")}')" style="padding:8px 10px;cursor:pointer;font-size:11px;color:#f0a020;font-weight:600;border-top:1px solid #0f1e30">🚩 Can't find it? Log Unregistered Item...</div>`;
@@ -4973,7 +5187,7 @@ function renderJobItemList() {
   list.innerHTML = jobItems.map((ji, idx) => `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e3248">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ji.name}</div>
+        <div style="font-size:13px;font-weight:600;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ji.name}${ji.fromDelivery?' <span style="font-size:9px;color:#4cdf8a;font-weight:700">📦 FROM DELIVERY</span>':''}</div>
         <div style="font-size:11px;color:#4a6880">${ji.barcode}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;margin-left:8px">
@@ -5016,6 +5230,7 @@ async function completeJob() {
     setSync('busy');
     const wentNegative = [];
     for (const ji of jobItems) {
+      if (ji.fromDelivery) continue; // went straight from supplier to job — never in van stock, nothing to deduct
       const item = items.find(i => i.id === ji.id);
       if (!item) continue;
       const locs = getLocations(item);
@@ -5663,6 +5878,7 @@ function rebuildColLocationRows() {
           <span style="font-size:11px;color:#6b8fad">Add to:</span>
           <select id="${row.key}" style="padding:6px 8px;background:#1a2840;border:1px solid #2a4060;border-radius:6px;color:#e8edf2;font-size:12px;outline:none">
             <option value="">Select location...</option>
+            ${jobActive && jobAddress ? `<option value="__JOB__">🔧 Use directly on job: ${jobAddress}</option>` : ''}
             ${LOCATIONS.map(l=>`<option value="${l}">${l}</option>`).join('')}
           </select>
         </div>
@@ -5753,13 +5969,22 @@ async function confirmCollection() {
 
   try {
     setSync('busy');
+    const usedOnJob = [];
     for (const a of assignments) {
       const item = items.find(i=>i.id===a.itemId);
       if (!item) continue;
+      if (a.location === '__JOB__') {
+        const existing = jobItems.find(j => j.id === a.itemId);
+        if (existing) existing.qty += Number(a.qty);
+        else jobItems.push({ id: a.itemId, name: item.name, barcode: item.barcode||'', qty: Number(a.qty), fromDelivery: true });
+        usedOnJob.push(a);
+        continue;
+      }
       const locs = {...getLocations(item)};
       locs[a.location] = (locs[a.location]||0) + Number(a.qty);
-      await db.collection('items').doc(a.itemId).update({locations: locs});
+      await db.collection('items').doc(a.itemId).update(locationsUpdatePayload(locs));
     }
+    if (usedOnJob.length) { renderJobItemList(); saveDraftToFirestore(); }
     await db.collection('deliveries').doc(currentConfirmDeliveryId).update({
       status: 'confirmed',
       confirmedBy: collectedBy,
@@ -5769,11 +5994,11 @@ async function confirmCollection() {
     const extras = assignments.filter(a=>a.extra);
     await logAction('delivery',
       `Collection confirmed: ${d.customerAddress}`,
-      `${collectedBy} confirmed — ${assignments.map(a=>`${a.name} ×${a.qty} → ${a.location}${a.extra?' (extra)':''}`).join(', ')}${extras.length?` · ${extras.length} extra item(s) added`:''}`
+      `${collectedBy} confirmed — ${assignments.map(a=>`${a.name} ×${a.qty} → ${a.location==='__JOB__'?'used directly on job':a.location}${a.extra?' (extra)':''}`).join(', ')}${extras.length?` · ${extras.length} extra item(s) added`:''}`
     );
     setSync('ok');
     closeModal('confirmCollectionModal');
-    toast('Collection confirmed! Stock added.','success');
+    toast(usedOnJob.length ? `Collection confirmed! ${usedOnJob.length} item(s) sent straight to the job.` : 'Collection confirmed! Stock added.','success');
     await reloadData();
     renderDeliveriesPage();
   } catch(e) { setSync('err'); toast('Error: '+e.message,'error'); }
