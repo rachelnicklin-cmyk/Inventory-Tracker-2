@@ -526,6 +526,10 @@ td{padding:8px 9px;vertical-align:middle}
           <button class="btn btn-outline admin-only" style="display:none;padding:4px 9px;font-size:11px" onclick="exportLog()">↓ CSV</button>
         </div>
       </div>
+      <div id="myActionsSection" style="margin-bottom:18px">
+        <div style="font-size:11px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">✏️ My Recent Actions — spot a mistake?</div>
+        <div id="myActionsRows"></div>
+      </div>
       <div id="logEntries"></div>
     </div>
   </div>
@@ -784,6 +788,25 @@ td{padding:8px 9px;vertical-align:middle}
 <!-- Stock Take Discrepancy Report -->
 <!-- Stock Take Location Picker -->
 <!-- Log Unregistered Item -->
+<!-- Correct a Recent Entry -->
+<div class="overlay" id="correctActionModal" onclick="if(event.target===this)closeModal('correctActionModal')">
+  <div class="modal sm">
+    <h2 style="font-size:14px;margin-bottom:4px">✏️ Correct This Entry</h2>
+    <div id="correctActionSummary" style="background:#1a2840;border-radius:7px;padding:11px 13px;margin-bottom:13px;font-size:12px;color:#c8d8e8"></div>
+    <div class="form-row full" style="margin-bottom:10px">
+      <div class="field"><label id="correctQtyLabel">What should the quantity have been? *</label><input type="number" id="correct-qty" min="0" inputmode="numeric"></div>
+    </div>
+    <div class="form-row full">
+      <div class="field"><label>Reason for correction *</label><input type="text" id="correct-reason" placeholder="e.g. Typed 5 instead of 3 by mistake"></div>
+    </div>
+    <p class="err-msg" id="correctActionErr"></p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('correctActionModal')">Cancel</button>
+      <button class="btn btn-warn" id="correctActionBtn" onclick="confirmCorrectAction()">Save Correction</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="unregItemModal" onclick="if(event.target===this)closeModal('unregItemModal')">
   <div class="modal sm">
     <h2 style="font-size:14px;margin-bottom:4px">🚩 Log Unregistered Item</h2>
@@ -1979,6 +2002,7 @@ async function confirmUseStock() {
     await db.collection('items').doc(useStockItemId).update(locationsUpdatePayload(newLocs));
     await logAction('qty', `Stock used: ${item.name}${job?' ('+job+')':''}`,
       `${currentUser.name} used ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc}${job?' · Job: '+job:''} · ${fromLoc}: ${available} → ${available-qty}`);
+    await recordMyAction({ type: 'use', itemId: useStockItemId, itemName: item.name, location: fromLoc, qty, job });
     setSync('ok');
     closeModal('useStockModal');
     toast(`${qty}× ${item.name} used from ${fromLoc}${job?' for '+job:''}`, 'success');
@@ -2079,6 +2103,7 @@ async function confirmTransfer() {
       await logAction('qty', `Stock transferred: ${item.name}`,
         `${currentUser.name} moved ${qty} unit${qty!==1?'s':''} of ${item.name} from ${fromLoc} to ${toLoc}${note ? ' — Note: ' + note : ''}`);
     }
+    await recordMyAction({ type: 'transfer', itemId: transferItemId, itemName: item.name, fromLoc, toLoc, qty });
     setSync('ok');
     closeModal('transferModal');
     toast(`${qty}× ${item.name} moved: ${fromLoc} → ${toLoc}`, 'success');
@@ -2683,8 +2708,120 @@ function openReorderList() {
 //  ACTIVITY LOG
 // ════════════════════════════════════════
 const LOG_ICONS = {qty:'📦',invoice:'🧾',add:'✅',del:'🗑️',edit:'✏️',return:'↩️'};
+// ════════════════════════════════════════
+//  CORRECT A RECENT ENTRY
+// ════════════════════════════════════════
+// Records a lightweight, structured trail of stock-affecting actions per
+// user — Use Stock, Transfers, and Job Mode deductions — separate from the
+// main activity log, so a correction can reliably adjust the right
+// item/location(s) without parsing log text back apart.
+async function recordMyAction(a) {
+  try {
+    await db.collection('myActions').add({
+      ...a,
+      performedBy: currentUser.name, ts: firebase.firestore.FieldValue.serverTimestamp(),
+      corrected: false, isTestData: !!currentUser?.isTester
+    });
+  } catch(e) { console.warn('Could not record action for correction tracking:', e); }
+}
+
+let myActionsCache = [];
+async function renderMyActions() {
+  const el = document.getElementById('myActionsRows');
+  if (!currentUser) return;
+  el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:10px 0">Loading...</div>';
+  try {
+    const snap = await db.collection('myActions')
+      .where('performedBy','==',currentUser.name)
+      .orderBy('ts','desc').limit(10).get();
+    myActionsCache = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(a => (!!currentUser?.isTester) === (!!a.isTestData));
+    if (!myActionsCache.length) {
+      el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:10px 0">No recent actions to correct.</div>';
+      return;
+    }
+    el.innerHTML = myActionsCache.map(a => {
+      let desc;
+      if (a.type === 'transfer') desc = `Moved ${a.qty}× ${a.itemName} <span style="color:#4a6880;font-weight:400">${a.fromLoc} → ${a.toLoc}</span>`;
+      else if (a.type === 'job') desc = `Used ${a.qty}× ${a.itemName} <span style="color:#4a6880;font-weight:400">on job at ${a.job}</span>`;
+      else desc = `Used ${a.qty}× ${a.itemName} <span style="color:#4a6880;font-weight:400">from ${a.location}</span>`;
+      return `
+      <div style="background:#0f1e30;border:1px solid ${a.corrected?'#1e3248':'#2a3a5a'};border-radius:7px;padding:9px 12px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;${a.corrected?'opacity:.55':''}">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#e8edf2">${desc}</div>
+          <div style="font-size:10px;color:#4a6880;margin-top:2px">${a.ts?.toDate ? fmtDate(a.ts.toDate()) : ''}${a.job && a.type!=='job'?' · '+a.job:''}${a.corrected?' · ✓ already corrected':''}</div>
+        </div>
+        ${a.corrected ? '' : `<button class="btn btn-outline" style="padding:4px 9px;font-size:10px;white-space:nowrap" onclick="openCorrectAction('${a.id}')">✏️ Correct</button>`}
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = `<div style="color:#ff6b6b;font-size:11px">Could not load: ${e.message}</div>`; }
+}
+
+let correctingActionId = null;
+function openCorrectAction(actionId) {
+  const a = myActionsCache.find(x => x.id === actionId);
+  if (!a) return;
+  correctingActionId = actionId;
+  const summaryEl = document.getElementById('correctActionSummary');
+  if (a.type === 'transfer') {
+    summaryEl.innerHTML = `You moved <strong>${a.qty}</strong> of <strong>${a.itemName}</strong> from <strong>${a.fromLoc}</strong> to <strong>${a.toLoc}</strong>.`;
+    document.getElementById('correctQtyLabel').textContent = 'What quantity should have transferred? *';
+  } else if (a.type === 'job') {
+    summaryEl.innerHTML = `You used <strong>${a.qty}</strong> of <strong>${a.itemName}</strong> on the job at <strong>${a.job}</strong> (from ${a.location}).`;
+    document.getElementById('correctQtyLabel').textContent = 'What should the quantity have been? *';
+  } else {
+    summaryEl.innerHTML = `You used <strong>${a.qty}</strong> of <strong>${a.itemName}</strong> from <strong>${a.location}</strong>${a.job?' for '+a.job:''}.`;
+    document.getElementById('correctQtyLabel').textContent = 'What should the quantity have been? *';
+  }
+  document.getElementById('correct-qty').value = a.qty;
+  document.getElementById('correct-reason').value = '';
+  document.getElementById('correctActionErr').style.display = 'none';
+  document.getElementById('correctActionModal').classList.add('open');
+}
+
+async function confirmCorrectAction() {
+  const a = myActionsCache.find(x => x.id === correctingActionId);
+  if (!a) return;
+  const newQty = parseInt(document.getElementById('correct-qty').value);
+  const reason = document.getElementById('correct-reason').value.trim();
+  const errEl = document.getElementById('correctActionErr');
+  if (isNaN(newQty) || newQty < 0) { errEl.textContent = 'Enter a valid quantity (0 or more).'; errEl.style.display = 'block'; return; }
+  if (!reason) { errEl.textContent = 'Please enter a reason for the correction.'; errEl.style.display = 'block'; return; }
+  if (newQty === a.qty) { errEl.textContent = 'That\'s the same quantity — nothing to correct.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  document.getElementById('correctActionBtn').disabled = true;
+  setSync('busy');
+  try {
+    const item = items.find(i => i.id === a.itemId);
+    if (!item) throw new Error('That item no longer exists');
+    const locs = getLocations(item);
+    const diff = a.qty - newQty; // positive = give some back; negative = take more
+    let logDetail, newLocs;
+    if (a.type === 'transfer') {
+      const fromBefore = locs[a.fromLoc] || 0, toBefore = locs[a.toLoc] || 0;
+      newLocs = {...locs, [a.fromLoc]: fromBefore + diff, [a.toLoc]: toBefore - diff};
+      logDetail = `${currentUser.name} corrected an earlier transfer of "${a.itemName}" from ${a.qty} to ${newQty} — Reason: ${reason} · ${a.fromLoc}: ${fromBefore} → ${fromBefore+diff} · ${a.toLoc}: ${toBefore} → ${toBefore-diff}`;
+    } else {
+      const loc = a.location;
+      const before = locs[loc] || 0, after = before + diff;
+      newLocs = {...locs, [loc]: after};
+      logDetail = `${currentUser.name} corrected an earlier "Used ${a.qty}" entry${a.type==='job'?' from the job at '+a.job:''} to ${newQty} — Reason: ${reason} · ${loc}: ${before} → ${after}`;
+    }
+    await db.collection('items').doc(a.itemId).update(locationsUpdatePayload(newLocs));
+    await db.collection('myActions').doc(correctingActionId).update({ corrected: true, correctedTo: newQty, correctedReason: reason, correctedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    if (!currentUser?.isTester) {
+      await logAction('edit', `Correction: ${item.name}`, logDetail);
+    }
+    setSync('ok');
+    closeModal('correctActionModal');
+    toast('Correction saved', 'success');
+    renderMyActions();
+  } catch(e) { setSync('err'); errEl.textContent = 'Failed: ' + e.message; errEl.style.display = 'block'; }
+  document.getElementById('correctActionBtn').disabled = false;
+}
+
 async function loadLog() {
   document.getElementById('logEntries').innerHTML = '<div class="empty-state"><div class="spinner" style="margin:0 auto 10px"></div>Loading...</div>';
+  renderMyActions();
   try {
     const snap = await db.collection('log').orderBy('ts','desc').limit(100).get();
     actLog = snap.docs.map(d => ({...d.data(), id:d.id}));
@@ -4821,6 +4958,7 @@ async function confirmScanUse(itemId) {
     await db.collection('items').doc(itemId).update(locationsUpdatePayload(newLocs));
     await logAction('qty', `Stock used (scan): ${item.name}${job?' ('+job+')':''}`,
       `${currentUser.name} scanned & used ${qty} from ${loc}${job?' · Job: '+job:''} · ${available}→${available-qty}`);
+    await recordMyAction({ type: 'use', itemId, itemName: item.name, location: loc, qty, job });
     setSync('ok');
     closeModal('scanActionModal');
     toast(`✓ ${qty}× ${item.name} used from ${loc}`, 'success');
@@ -5240,6 +5378,7 @@ async function completeJob() {
       if (newLocs[vanLocation] < 0) wentNegative.push(`${ji.name} (${vanLocation}: ${newLocs[vanLocation]})`);
       if (newLocs[vanLocation] === 0) delete newLocs[vanLocation];
       await db.collection('items').doc(ji.id).update(locationsUpdatePayload(newLocs));
+      await recordMyAction({ type: 'job', itemId: ji.id, itemName: item.name, location: vanLocation, qty: ji.qty, job: jobAddress });
     }
 
     // Save completed job to Firestore
