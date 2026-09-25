@@ -2408,7 +2408,7 @@ async function confirmUnregisteredItem() {
     const newItem = { id: ref.id, name, barcode };
     if (unregSource === 'job') {
       const existing = jobItems.find(j => j.id === newItem.id);
-      if (existing) existing.qty++; else jobItems.push({ id: newItem.id, name: newItem.name, barcode: newItem.barcode, qty: 1 });
+      if (existing) existing.qty++; else jobItems.push({ id: newItem.id, name: newItem.name, barcode: newItem.barcode, qty: 1, location: loc });
       renderJobItemList();
       saveDraftToFirestore();
     } else if (unregSource === 'scan') {
@@ -5260,7 +5260,7 @@ function selectJobNameSearchItem(itemId) {
   document.getElementById('jobNameSearch').value = '';
   document.getElementById('jobNameSearchResults').style.display = 'none';
   const existing = jobItems.find(j => j.id === item.id);
-  if (existing) { existing.qty++; } else { jobItems.push({ id: item.id, name: item.name, barcode: item.barcode||'', qty: 1 }); }
+  if (existing) { existing.qty++; } else { jobItems.push({ id: item.id, name: item.name, barcode: item.barcode||'', qty: 1, location: currentUser.name + "'s Van" }); }
   const flash = document.getElementById('jobScanFlash');
   flash.style.display = 'block';
   flash.style.background = '#0f2e1a';
@@ -5295,7 +5295,7 @@ function handleJobBarcode(code) {
   if (existing) {
     existing.qty++;
   } else {
-    jobItems.push({ id: item.id, name: item.name, barcode: code, qty: 1 });
+    jobItems.push({ id: item.id, name: item.name, barcode: code, qty: 1, location: currentUser.name + "'s Van" });
   }
   flash.style.display = 'block';
   flash.style.background = '#0f2e1a';
@@ -5323,10 +5323,13 @@ function renderJobItemList() {
   clearBtn.style.display = 'inline';
   completeBtn.style.display = 'block';
   list.innerHTML = jobItems.map((ji, idx) => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e3248">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e3248;gap:8px;flex-wrap:wrap">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;color:#e8edf2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ji.name}${ji.fromDelivery?' <span style="font-size:9px;color:#4cdf8a;font-weight:700">📦 FROM DELIVERY</span>':''}</div>
         <div style="font-size:11px;color:#4a6880">${ji.barcode}</div>
+        ${ji.fromDelivery ? '' : `<select onchange="jobSetItemLocation(${idx}, this.value)" style="margin-top:4px;font-size:10px;padding:2px 5px;background:#0f1e30;border:1px solid #2a4060;border-radius:4px;color:#8ab4d8">
+          ${LOCATIONS.map(l=>`<option value="${l}"${(ji.location||(currentUser.name+"'s Van"))===l?' selected':''}>Using from: ${l}</option>`).join('')}
+        </select>`}
       </div>
       <div style="display:flex;align-items:center;gap:6px;margin-left:8px">
         <button onclick="jobAdjQty(${idx},-1)" style="background:#1e3248;border:none;color:#e8edf2;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1">−</button>
@@ -5335,6 +5338,11 @@ function renderJobItemList() {
         <button onclick="jobRemoveItem(${idx})" style="background:#3a1010;border:none;color:#ff6b6b;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:11px">✕</button>
       </div>
     </div>`).join('');
+}
+
+function jobSetItemLocation(idx, location) {
+  jobItems[idx].location = location;
+  saveDraftToFirestore();
 }
 
 function jobAdjQty(idx, delta) {
@@ -5359,26 +5367,27 @@ function clearJobList() {
 // ── Complete Job ──
 async function completeJob() {
   if (!jobItems.length) { toast('No items to deduct', 'error'); return; }
-  if (!confirm(`Complete job at "${jobAddress}" and deduct ${jobItems.reduce((s,i)=>s+i.qty,0)} units from ${currentUser.name}'s van?`)) return;
+  if (!confirm(`Complete job at "${jobAddress}" and deduct ${jobItems.reduce((s,i)=>s+i.qty,0)} units from the locations shown against each item?`)) return;
 
   stopJobScanner();
-  const vanLocation = currentUser.name + "'s Van";
+  const vanLocation = currentUser.name + "'s Van"; // fallback for any item added before this feature existed
 
   try {
     setSync('busy');
     const wentNegative = [];
     for (const ji of jobItems) {
-      if (ji.fromDelivery) continue; // went straight from supplier to job — never in van stock, nothing to deduct
+      if (ji.fromDelivery) continue; // went straight from supplier to job — never in stock, nothing to deduct
       const item = items.find(i => i.id === ji.id);
       if (!item) continue;
+      const useLoc = ji.location || vanLocation;
       const locs = getLocations(item);
-      const vanQty = locs[vanLocation] || 0;
+      const curQty = locs[useLoc] || 0;
       const newLocs = {...locs};
-      newLocs[vanLocation] = vanQty - ji.qty;
-      if (newLocs[vanLocation] < 0) wentNegative.push(`${ji.name} (${vanLocation}: ${newLocs[vanLocation]})`);
-      if (newLocs[vanLocation] === 0) delete newLocs[vanLocation];
+      newLocs[useLoc] = curQty - ji.qty;
+      if (newLocs[useLoc] < 0) wentNegative.push(`${ji.name} (${useLoc}: ${newLocs[useLoc]})`);
+      if (newLocs[useLoc] === 0) delete newLocs[useLoc];
       await db.collection('items').doc(ji.id).update(locationsUpdatePayload(newLocs));
-      await recordMyAction({ type: 'job', itemId: ji.id, itemName: item.name, location: vanLocation, qty: ji.qty, job: jobAddress });
+      await recordMyAction({ type: 'job', itemId: ji.id, itemName: item.name, location: useLoc, qty: ji.qty, job: jobAddress });
     }
 
     // Save completed job to Firestore
