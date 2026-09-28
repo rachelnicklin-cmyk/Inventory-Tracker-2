@@ -735,6 +735,11 @@ td{padding:8px 9px;vertical-align:middle}
         </details>
       </div>
       <div class="admin-section">
+        <h3>📋 Resolve Migration Duplicates</h3>
+        <p style="font-size:11px;color:#4a6880;margin-bottom:10px">From the September 2026 database restructure — duplicate items to resolve, relic rows to remove, and a few things that need your eyes before the app can act on them.</p>
+        <button class="btn btn-outline" style="padding:7px 13px;font-size:12px" onclick="openMigrationReview()">Open Migration Review</button>
+      </div>
+      <div class="admin-section">
         <h3>↩️ Returns History</h3>
         <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Every stock return, with the reason, reference number, and proof photo attached.</p>
         <button class="btn btn-outline" style="padding:7px 13px;font-size:12px" onclick="openReturnsHistory()">View Returns History</button>
@@ -1123,15 +1128,47 @@ td{padding:8px 9px;vertical-align:middle}
     <div class="form-row">
       <div class="field">
         <label>Category *</label>
-        <select id="f-cat" onchange="toggleNewCat()">
+        <select id="f-cat" onchange="onCategoryFieldsChange()">
           <option value="">Select...</option>
-          <option value="__new__">+ New category...</option>
         </select>
       </div>
-      <div class="field" id="newCatField" style="display:none"><label>New Category</label><input type="text" id="f-newcat"></div>
-      <div class="field" id="mfrField"><label>Mfr Code</label><input type="text" id="f-mfr" placeholder="e.g. BUFF50"></div>
+      <div class="field"><label>Mfr Code <span style="font-size:10px;color:#4a6880">(one only, own column)</span></label><input type="text" id="f-mfr" placeholder="e.g. BUFF50"></div>
     </div>
-    <div class="form-row full"><div class="field"><label>Item Name *</label><input type="text" id="f-name" oninput="checkDuplicateItemName()"></div></div>
+    <div class="form-row">
+      <div class="field" id="f-brand-field"><label>Brand <span style="font-size:10px;color:#4a6880">the maker, not the supplier</span></label><input type="text" id="f-brand" placeholder="e.g. Vaillant" oninput="updateNamePreview()" onblur="this.value=normalizeAlias(this.value,'brand',document.getElementById('f-cat').value);updateNamePreview()"></div>
+      <div class="field" id="f-range-field"><label>Range <span style="font-size:10px;color:#4a6880">the model line</span></label><input type="text" id="f-range" placeholder="e.g. aroTHERM plus" oninput="updateNamePreview()"></div>
+    </div>
+    <div class="form-row full">
+      <div class="field"><label>Type * <span style="font-size:10px;color:#4a6880">product noun only — no sizes, no brand, no price</span></label><input type="text" id="f-type" placeholder="e.g. Elbow, Reducing Tee, Heat Pump" oninput="updateNamePreview()"></div>
+    </div>
+    <div class="form-row" id="f-mainconn-row">
+      <div class="field"><label>Main Connection Type</label>
+        <select id="f-mainconn" onchange="updateNamePreview()">
+          <option value="">Select...</option>
+        </select>
+      </div>
+      <div class="field"><label id="f-attra-label">Attribute A</label><input type="text" id="f-attra" oninput="updateNamePreview()" onblur="this.value=normalizeAlias(this.value,'attrA',document.getElementById('f-cat').value);updateNamePreview()"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Connection Type B <span style="font-size:10px;color:#4a6880">blank = same as Main</span></label>
+        <select id="f-connb"><option value="">Same as Main</option></select>
+      </div>
+      <div class="field"><label id="f-attrb-label">Attribute B</label><input type="text" id="f-attrb" oninput="updateNamePreview()"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Connection Type C <span style="font-size:10px;color:#4a6880">blank = same as Main</span></label>
+        <select id="f-connc"><option value="">Same as Main</option></select>
+      </div>
+      <div class="field"><label id="f-attrc-label">Attribute C</label><input type="text" id="f-attrc" oninput="updateNamePreview()" onblur="this.value=normalizeAlias(this.value,'attrC',document.getElementById('f-cat').value);updateNamePreview()"></div>
+    </div>
+    <div class="form-row" id="f-colourmat-row">
+      <div class="field" id="f-colour-field"><label>Colour <span style="font-size:10px;color:#4a6880">radiators: leave blank if white</span></label><input type="text" id="f-colour" oninput="updateNamePreview()"></div>
+      <div class="field" id="f-material-field"><label>Material</label><input type="text" id="f-material"></div>
+    </div>
+    <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 12px;margin:2px 0 12px">
+      <div style="font-size:10px;color:#4a6880;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">This item will be called:</div>
+      <div id="f-name-preview" style="font-size:13px;font-weight:700;color:#e8edf2">—</div>
+    </div>
     <div id="dupItemWarning" style="display:none;background:#2e2410;border:1px solid #4a3a10;border-radius:6px;padding:8px 10px;margin:-4px 0 12px"></div>
     <div class="form-row">
       <div class="field"><label>Barcode</label>
@@ -1258,6 +1295,23 @@ td{padding:8px 9px;vertical-align:middle}
 
 <!-- Return to Supplier -->
 <!-- Returns History -->
+<!-- Migration Duplicate Resolution -->
+<div class="overlay" id="migrationReviewModal" onclick="if(event.target===this)closeModal('migrationReviewModal')">
+  <div class="modal" style="max-width:680px;max-height:88vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:4px">📋 Migration Review</h2>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:12px">From the September 2026 database restructure. Barcodes are the join key throughout — matched here against what's actually in the app right now.</p>
+    <div style="display:flex;gap:6px;margin-bottom:14px;background:#1a2840;border-radius:8px;padding:4px">
+      <button id="migTab-dup" class="btn btn-primary" style="flex:1;padding:7px;font-size:11px" onclick="setMigrationTab('dup')">Duplicates (<span id="migDupCount">0</span>)</button>
+      <button id="migTab-del" class="btn btn-outline" style="flex:1;padding:7px;font-size:11px" onclick="setMigrationTab('del')">Relics to Delete (<span id="migDelCount">0</span>)</button>
+      <button id="migTab-manual" class="btn btn-outline" style="flex:1;padding:7px;font-size:11px" onclick="setMigrationTab('manual')">Needs Your Input (<span id="migManualCount">0</span>)</button>
+    </div>
+    <div id="migrationReviewBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('migrationReviewModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="returnsHistoryModal" onclick="if(event.target===this)closeModal('returnsHistoryModal')">
   <div class="modal" style="max-width:640px;max-height:85vh;overflow-y:auto">
     <h2 style="font-size:14px;margin-bottom:12px">↩️ Returns History</h2>
@@ -2159,6 +2213,130 @@ async function uploadReturnPhotos(returnRefForPath) {
   return urls;
 }
 
+// ════════════════════════════════════════
+//  MIGRATION DUPLICATE RESOLUTION (Sept 2026 database restructure)
+// ════════════════════════════════════════
+let migrationTab = 'dup';
+
+function openMigrationReview() {
+  document.getElementById('migDupCount').textContent = MIGRATION_DUPLICATE_GROUPS.length;
+  document.getElementById('migDelCount').textContent = MIGRATION_DELETED_RELICS.length;
+  document.getElementById('migManualCount').textContent = MIGRATION_NEEDS_MANUAL_REVIEW.length;
+  setMigrationTab('dup');
+  document.getElementById('migrationReviewModal').classList.add('open');
+}
+
+function setMigrationTab(tab) {
+  migrationTab = tab;
+  ['dup','del','manual'].forEach(t => {
+    const btn = document.getElementById('migTab-'+t);
+    btn.className = t===tab ? 'btn btn-primary' : 'btn btn-outline';
+    btn.style.cssText += ';flex:1;padding:7px;font-size:11px';
+  });
+  if (tab === 'dup') renderMigrationDupTab();
+  else if (tab === 'del') renderMigrationDelTab();
+  else renderMigrationManualTab();
+}
+
+function renderMigrationDupTab() {
+  const el = document.getElementById('migrationReviewBody');
+  let pendingCount = 0;
+  el.innerHTML = MIGRATION_DUPLICATE_GROUPS.map((g, gi) => {
+    const found = g.barcodes.map(bc => items.find(i => i.barcode === bc)).filter(Boolean);
+    if (found.length <= 1) {
+      // 0 or 1 copy left in the app — already resolved (or never existed here)
+      return '';
+    }
+    pendingCount++;
+    return `
+    <div style="background:#0f1e30;border:1px solid ${g.conflict?'#5a3a10':'#1e3248'};border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;color:#e8edf2;margin-bottom:2px">${g.description}</div>
+      <div style="font-size:10px;color:#4a6880;margin-bottom:8px">${g.category}${g.conflict?' · <span style="color:#f0a020">⚠ supplier data differs between copies — check before choosing</span>':''}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${found.map(it => `
+          <div style="background:#1a2840;border-radius:6px;padding:8px 10px">
+            <div style="font-size:11px;color:#8ab4d8;font-family:monospace">${it.barcode}</div>
+            <div style="font-size:11px;color:#c8d8e8;margin-top:3px">Stock: ${totalQty(it)}</div>
+            <div style="font-size:10px;color:#4a6880;margin-top:2px">${Object.keys(it.suppliers||{}).length} supplier(s) on file</div>
+            <button class="btn btn-outline" style="width:100%;padding:5px;font-size:10px;margin-top:7px" onclick="resolveMigrationDuplicate(${gi}, '${it.barcode}')">Keep this one</button>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  if (!pendingCount) el.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:20px 0">All duplicate groups resolved. 🎉</div>';
+}
+
+async function resolveMigrationDuplicate(groupIndex, keepBarcode) {
+  const g = MIGRATION_DUPLICATE_GROUPS[groupIndex];
+  const foundItems = g.barcodes.map(bc => items.find(i => i.barcode === bc)).filter(Boolean);
+  const keeper = foundItems.find(i => i.barcode === keepBarcode);
+  const others = foundItems.filter(i => i.barcode !== keepBarcode);
+  if (!keeper || !others.length) return;
+  if (!confirm(`Keep barcode ${keeper.barcode} for "${g.description}"?\n\nStock from the other barcode(s) will be merged in, then those barcode(s) removed. This can't be undone.`)) return;
+  setSync('busy');
+  try {
+    const mergedLocations = { ...(keeper.locations || {}) };
+    others.forEach(o => {
+      Object.entries(o.locations || {}).forEach(([loc, qty]) => {
+        mergedLocations[loc] = (mergedLocations[loc] || 0) + Number(qty || 0);
+      });
+    });
+    await db.collection('items').doc(keeper.id).update(locationsUpdatePayload(mergedLocations));
+    for (const o of others) await db.collection('items').doc(o.id).delete();
+    await logAction('del', `Migration duplicate resolved: ${g.description}`,
+      `${currentUser.name} kept barcode ${keeper.barcode}, removed ${others.map(o=>o.barcode).join(', ')} — stock merged`);
+    setSync('ok');
+    toast('Resolved — stock merged, other barcode(s) removed', 'success');
+    await reloadData();
+    renderMigrationDupTab();
+  } catch(e) { setSync('err'); toast('Failed: '+e.message, 'error'); }
+}
+
+function renderMigrationDelTab() {
+  const el = document.getElementById('migrationReviewBody');
+  let pendingCount = 0;
+  el.innerHTML = MIGRATION_DELETED_RELICS.map((d, di) => {
+    const found = items.find(i => i.barcode === d.barcode);
+    if (!found) return '';
+    pendingCount++;
+    return `
+    <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:8px;padding:10px 13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#e8edf2">${found.name}</div>
+        <div style="font-size:10px;color:#4a6880;margin-top:2px">${d.barcode} · Rule 1.5 — relic of Dan's pre-app database, never priced, not orderable</div>
+      </div>
+      <button class="btn btn-danger" style="padding:5px 10px;font-size:10px" onclick="deleteMigrationRelic(${di})">🗑 Delete</button>
+    </div>`;
+  }).join('');
+  if (!pendingCount) el.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:20px 0">All relic rows already removed. 🎉</div>';
+}
+
+async function deleteMigrationRelic(index) {
+  const d = MIGRATION_DELETED_RELICS[index];
+  const item = items.find(i => i.barcode === d.barcode);
+  if (!item) return;
+  if (!confirm(`Delete "${item.name}" (${d.barcode})?\n\nThis is one of the 6 pre-app relic rows named in RULES FOR RACHEL 1.5 — never priced, not orderable.`)) return;
+  setSync('busy');
+  try {
+    await db.collection('items').doc(item.id).delete();
+    await logAction('del', `Migration relic deleted: ${item.name}`, `${currentUser.name} removed pre-app relic row, barcode ${d.barcode}`);
+    setSync('ok');
+    toast('Deleted', 'success');
+    await reloadData();
+    renderMigrationDelTab();
+  } catch(e) { setSync('err'); toast('Failed: '+e.message, 'error'); }
+}
+
+function renderMigrationManualTab() {
+  const el = document.getElementById('migrationReviewBody');
+  el.innerHTML = `<div style="font-size:11px;color:#6b8fad;margin-bottom:10px">These can't be matched by barcode from the data given — they need a human look, not an app action.</div>` +
+    MIGRATION_NEEDS_MANUAL_REVIEW.map(m => `
+    <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:8px;padding:10px 13px;margin-bottom:8px">
+      <div style="font-size:11px;font-weight:700;color:#f0a020">${m.category || ''}${m.barcode ? ' · '+m.barcode : ''}</div>
+      <div style="font-size:11px;color:#c8d8e8;margin-top:4px">${m.note}</div>
+    </div>`).join('');
+}
+
 async function openReturnsHistory() {
   const el = document.getElementById('returnsHistoryRows');
   el.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">Loading...</div>';
@@ -2313,21 +2491,93 @@ async function confirmAdjust() {
 // ════════════════════════════════════════
 //  ADD / EDIT ITEMS
 // ════════════════════════════════════════
+// Applies the ALIASES sheet's spelling/size corrections. `field` scopes waste
+// sizes so "36" only becomes "32" for a Waste & Drainage nominal size, never
+// elsewhere (a BSP thread size stays imperial as written — rule 4.2).
+function normalizeAlias(value, field, category) {
+  if (!value) return value;
+  const v = String(value).trim();
+  const vLower = v.toLowerCase();
+  for (const [alias, canonical, scope] of ITEM_ALIASES) {
+    if (alias !== vLower) continue;
+    if (scope === 'waste-size' && category !== 'Waste & Drainage') continue;
+    if (scope && scope !== 'waste-size' && scope !== field) continue;
+    return canonical;
+  }
+  return v;
+}
+
+// Builds the display name from structured fields, in FIELD GUIDE reading
+// order: Brand | Range | Type | Main Conn | Attr A | Conn B | Attr B | Conn
+// C | Attr C | Colour note. Sizes never reordered (rule 2.5).
+function composeItemName(f) {
+  const parts = [];
+  if (f.brand) parts.push(f.brand);
+  if (f.range) parts.push(f.range);
+  if (f.type) parts.push(f.type);
+  const sizeBits = [];
+  if (f.attrA) sizeBits.push(f.attrA);
+  if (f.attrB) sizeBits.push(f.attrB);
+  if (f.attrC) sizeBits.push(f.attrC);
+  if (sizeBits.length) parts.push(sizeBits.join('x') + (CATEGORY_FIELD_GUIDE[f.category]?.a?.includes('mm') ? 'mm' : ''));
+  if (f.mainConnectionType && f.mainConnectionType !== f.category) parts.push(f.mainConnectionType);
+  if (f.colour) parts.push(f.colour);
+  return parts.filter(Boolean).join(' ').trim() || '(unnamed item)';
+}
+
 function populateCatDropdown(selectedCat) {
-  const cats = [...new Set(items.map(i => i.category).filter(Boolean))].sort();
   const sel = document.getElementById('f-cat');
+  const isKnown = RACHEL_CATEGORIES.includes(selectedCat);
   sel.innerHTML = '<option value="">Select...</option>' +
-    cats.map(c => `<option value="${c}"${c===selectedCat?' selected':''}>${c}</option>`).join('') +
-    '<option value="__new__">+ New category...</option>';
-  if (selectedCat && !cats.includes(selectedCat)) {
-    // Category exists on item but not yet in list — add it
-    sel.innerHTML = `<option value="${selectedCat}" selected>${selectedCat}</option>` + sel.innerHTML;
+    RACHEL_CATEGORIES.map(c => `<option value="${c}"${c===selectedCat?' selected':''}>${c}</option>`).join('');
+  if (selectedCat && !isKnown) {
+    sel.innerHTML = `<option value="${selectedCat}" selected>⚠ ${selectedCat} (old category — please choose a current one)</option>` + sel.innerHTML;
   }
 }
-function toggleNewCat() {
-  const v = document.getElementById('f-cat').value;
-  document.getElementById('newCatField').style.display = v==='__new__' ? 'block' : 'none';
-  document.getElementById('mfrField').style.display    = v==='__new__' ? 'none'  : 'block';
+function connOptionsHtml(selected) {
+  return '<option value="">Select...</option>' + ALLOWED_CONNECTIONS.map(c => `<option value="${c}"${c===selected?' selected':''}>${c}</option>`).join('');
+}
+
+function onCategoryFieldsChange(keepValues) {
+  const cat = document.getElementById('f-cat').value;
+  const guide = CATEGORY_FIELD_GUIDE[cat] || { a:'Attribute A', b:'Attribute B', c:'Attribute C', mainConn:true };
+  document.getElementById('f-brand-field').style.display = guide.brand ? '' : 'none';
+  document.getElementById('f-range-field').style.display = guide.range ? '' : 'none';
+  document.getElementById('f-mainconn-row').style.display = (guide.a || guide.mainConn) ? '' : 'none';
+  document.getElementById('f-colourmat-row').style.display = (guide.colour || guide.material) ? '' : 'none';
+  document.getElementById('f-colour-field').style.display = guide.colour ? '' : 'none';
+  document.getElementById('f-material-field').style.display = guide.material ? '' : 'none';
+  document.getElementById('f-attra-label').textContent = guide.a || 'Attribute A';
+  document.getElementById('f-attrb-label').textContent = guide.b || 'Attribute B';
+  document.getElementById('f-attrc-label').textContent = guide.c || 'Attribute C';
+  document.getElementById('f-attra').closest('.field').style.display = guide.a ? '' : 'none';
+  document.getElementById('f-attrb').closest('.field').style.display = guide.b ? '' : 'none';
+  document.getElementById('f-attrc').closest('.field').style.display = guide.c ? '' : 'none';
+  if (!keepValues) {
+    const mainSel = document.getElementById('f-mainconn'), bSel = document.getElementById('f-connb'), cSel = document.getElementById('f-connc');
+    const curMain = mainSel.value, curB = bSel.value, curC = cSel.value;
+    mainSel.innerHTML = connOptionsHtml(curMain);
+    bSel.innerHTML = '<option value="">Same as Main</option>' + ALLOWED_CONNECTIONS.map(c => `<option value="${c}"${c===curB?' selected':''}>${c}</option>`).join('');
+    cSel.innerHTML = '<option value="">Same as Main</option>' + ALLOWED_CONNECTIONS.map(c => `<option value="${c}"${c===curC?' selected':''}>${c}</option>`).join('');
+  }
+  updateNamePreview();
+  checkDuplicateItemName();
+}
+
+function updateNamePreview() {
+  const cat = document.getElementById('f-cat').value;
+  const preview = composeItemName({
+    category: cat,
+    brand: document.getElementById('f-brand').value.trim(),
+    range: document.getElementById('f-range').value.trim(),
+    type: document.getElementById('f-type').value.trim(),
+    mainConnectionType: document.getElementById('f-mainconn').value,
+    attrA: document.getElementById('f-attra').value.trim(),
+    attrB: document.getElementById('f-attrb').value.trim(),
+    attrC: document.getElementById('f-attrc').value.trim(),
+    colour: document.getElementById('f-colour').value.trim(),
+  });
+  document.getElementById('f-name-preview').textContent = preview;
 }
 function renderLocationFields(locs) {
   locs = locs || {};
@@ -2454,8 +2704,8 @@ function toggleOrderOnDemandHint() {
 // using the same fuzzy word-overlap scoring as catalog/invoice matching.
 function checkDuplicateItemName() {
   const box = document.getElementById('dupItemWarning');
-  const name = document.getElementById('f-name').value.trim();
-  if (!name || name.length < 3) { box.style.display = 'none'; return; }
+  const name = document.getElementById('f-name-preview')?.textContent || '';
+  if (!name || name === '—' || name.length < 3) { box.style.display = 'none'; return; }
   const matches = items
     .filter(it => it.id !== editId)
     .map(it => ({ item: it, score: wordOverlapScore(name, it.name) }))
@@ -2464,7 +2714,7 @@ function checkDuplicateItemName() {
     .slice(0, 3);
   if (!matches.length) { box.style.display = 'none'; return; }
   box.style.display = 'block';
-  box.innerHTML = `<div style="font-size:11px;font-weight:700;color:#f0a020;margin-bottom:5px">⚠ Possibly already exists:</div>` +
+  box.innerHTML = `<div style="font-size:11px;font-weight:700;color:#f0a020;margin-bottom:5px">⚠ Possibly already exists — search before creating (rule 1.9):</div>` +
     matches.map(m => `<div style="font-size:11px;color:#e8edf2;padding:3px 0">${m.item.name} <span style="color:#4a6880">(${m.item.category || 'Uncategorised'} · Total stock: ${totalQty(m.item)})</span></div>`).join('') +
     `<div style="font-size:10px;color:#6b8fad;margin-top:5px">If this is actually the same item, close this form and use that one instead of adding a duplicate.</div>`;
 }
@@ -2472,16 +2722,17 @@ function checkDuplicateItemName() {
 function openAdd() {
   editId = null;
   document.getElementById('modalTitle').textContent = 'Add Item';
-  ['name','mfr','notes'].forEach(k => document.getElementById('f-'+k).value='');
+  ['mfr','notes','brand','range','type','attra','attrb','attrc','colour','material'].forEach(k => document.getElementById('f-'+k).value='');
   document.getElementById('f-barcode').value = generateBarcodeValue();
-  document.getElementById('f-newcat').value='';
   populateCatDropdown('');
+  document.getElementById('f-mainconn').innerHTML = connOptionsHtml('');
+  document.getElementById('f-connb').innerHTML = '<option value="">Same as Main</option>';
+  document.getElementById('f-connc').innerHTML = '<option value="">Same as Main</option>';
+  onCategoryFieldsChange(true);
   document.getElementById('f-min').value='0';
   document.getElementById('f-ondemand').checked = false;
   toggleOrderOnDemandHint();
   renderLocationFields({});
-  document.getElementById('newCatField').style.display='none';
-  document.getElementById('mfrField').style.display='block';
   supEditorData=[]; renderSupEditor();
   document.getElementById('dupItemWarning').style.display='none';
   document.getElementById('itemErr').style.display='none';
@@ -2491,9 +2742,15 @@ function openAdd() {
 function openEdit(id) {
   const item = items.find(i => i.id===id); editId=id;
   document.getElementById('modalTitle').textContent = item.unregistered ? '🚩 Complete Unregistered Item' : 'Edit Item';
-  document.getElementById('f-name').value = item.name||'';
   populateCatDropdown(item.category||'');
-  document.getElementById('f-newcat').value = '';
+  document.getElementById('f-brand').value = item.brand||'';
+  document.getElementById('f-range').value = item.range||'';
+  document.getElementById('f-type').value = item.type||'';
+  document.getElementById('f-attra').value = item.attrA||'';
+  document.getElementById('f-attrb').value = item.attrB||'';
+  document.getElementById('f-attrc').value = item.attrC||'';
+  document.getElementById('f-colour').value = item.colour||'';
+  document.getElementById('f-material').value = item.material||'';
   document.getElementById('f-barcode').value = item.barcode||'';
   document.getElementById('f-mfr').value  = item.mfr_code||'';
   document.getElementById('f-min').value  = item.min_qty||0;
@@ -2501,8 +2758,10 @@ function openEdit(id) {
   toggleOrderOnDemandHint();
   document.getElementById('f-notes').value= item.notes||'';
   renderLocationFields(getLocations(item));
-  document.getElementById('newCatField').style.display='none';
-  document.getElementById('mfrField').style.display='block';
+  document.getElementById('f-mainconn').innerHTML = connOptionsHtml(item.mainConnectionType||'');
+  document.getElementById('f-connb').innerHTML = '<option value="">Same as Main</option>' + ALLOWED_CONNECTIONS.map(c=>`<option value="${c}"${c===item.connectionTypeB?' selected':''}>${c}</option>`).join('');
+  document.getElementById('f-connc').innerHTML = '<option value="">Same as Main</option>' + ALLOWED_CONNECTIONS.map(c=>`<option value="${c}"${c===item.connectionTypeC?' selected':''}>${c}</option>`).join('');
+  onCategoryFieldsChange(true);
   supEditorData = Object.entries(item.suppliers||{}).map(([name,d])=>({name, code:d.code||'', price:d.price||'', min_order:d.min_order||''}));
   renderSupEditor();
   document.getElementById('dupItemWarning').style.display='none';
@@ -2527,13 +2786,26 @@ function renderSupEditor() {
     </div>`).join('');
 }
 async function saveItem() {
-  const name = document.getElementById('f-name').value.trim();
-  let cat = document.getElementById('f-cat').value;
-  if (cat==='__new__') cat = document.getElementById('f-newcat').value.trim();
-  if (!name || !cat) { document.getElementById('itemErr').style.display='block'; return; }
+  const cat = document.getElementById('f-cat').value;
+  const errEl = document.getElementById('itemErr');
+  if (!cat || !RACHEL_CATEGORIES.includes(cat)) { errEl.textContent = 'Please choose a current category from the list.'; errEl.style.display='block'; return; }
+  const type = normalizeAlias(document.getElementById('f-type').value.trim(), 'type', cat);
+  if (!type) { errEl.textContent = 'Please fill in Type (the product itself — e.g. Elbow, Heat Pump).'; errEl.style.display='block'; return; }
+  errEl.style.display = 'none';
+  const brand = normalizeAlias(document.getElementById('f-brand').value.trim(), 'brand', cat);
+  const range = document.getElementById('f-range').value.trim();
+  const attrA = normalizeAlias(document.getElementById('f-attra').value.trim(), 'attrA', cat);
+  const attrB = document.getElementById('f-attrb').value.trim();
+  const attrC = normalizeAlias(document.getElementById('f-attrc').value.trim(), 'attrC', cat);
+  const colour = document.getElementById('f-colour').value.trim();
+  const material = document.getElementById('f-material').value.trim();
+  const mainConnectionType = document.getElementById('f-mainconn').value;
+  const connectionTypeB = document.getElementById('f-connb').value;
+  const connectionTypeC = document.getElementById('f-connc').value;
+  const name = composeItemName({ category:cat, brand, range, type, mainConnectionType, attrA, attrB, attrC, colour });
   if (!editId) {
     const strongMatch = items.find(it => wordOverlapScore(name, it.name) >= 0.85);
-    if (strongMatch && !confirm(`This looks very similar to an existing item: "${strongMatch.name}".\n\nAdd it as a separate new item anyway? Tap Cancel to go back and use the existing one instead.`)) return;
+    if (strongMatch && !confirm(`Rule 1.9 — search before creating: this looks very similar to an existing item: "${strongMatch.name}".\n\nAdd it as a separate new item anyway? Tap Cancel to go back and use the existing one instead.`)) return;
   }
   const sups = {};
   supEditorData.forEach(s => {
@@ -2548,7 +2820,9 @@ async function saveItem() {
     if (v > 0) locations[inp.dataset.loc] = v;
   });
   const barcode = document.getElementById('f-barcode').value.trim() || generateBarcodeValue();
-  const payload = { name, category:cat, mfr_code:document.getElementById('f-mfr').value.trim(), barcode, locations, min_qty:parseInt(document.getElementById('f-min').value)||0, notes:document.getElementById('f-notes').value.trim(), suppliers:sups, orderOnDemand: document.getElementById('f-ondemand').checked };
+  const payload = { name, category:cat, brand, range, type, mainConnectionType, attrA, connectionTypeB, attrB, connectionTypeC, attrC, colour, material,
+    mfr_code:document.getElementById('f-mfr').value.trim(), barcode, locations, min_qty:parseInt(document.getElementById('f-min').value)||0,
+    notes:document.getElementById('f-notes').value.trim(), suppliers:sups, orderOnDemand: document.getElementById('f-ondemand').checked };
   document.getElementById('saveItemBtn').disabled = true;
   setSync('busy');
   try {
@@ -3848,6 +4122,149 @@ function createOrderFromOrderForm() {
 // Bridges Rachel's master pricing spreadsheet (SharePoint/Excel, not a live
 // stock list) with this app's per-item supplier codes & prices. Manual
 // import/export, not a live sync — see Admin > Data.
+// ════════════════════════════════════════
+//  RACHEL'S MATERIALS DATABASE — STRUCTURED ITEM RULES
+//  (from RULES FOR RACHEL / FIELD GUIDE / ALIASES, restructured Sept 2026)
+// ════════════════════════════════════════
+const RACHEL_CATEGORIES = [
+  'Boiler Controls','Boiler Flues','Boiler Spares','Buffers/Volumisers/Back Up Heaters',
+  'Chemicals','Clips','Filters','Fittings Compression','Fittings End Feed','Fittings Flat Faced',
+  'Fittings M-Press','Fittings MLCP','Fittings Wipex','Heat Pump Controls','Heat Pumps + Accessories',
+  'Insulation','Male/Female Irons','Pipe','Push Fit','Rad Valves','Radiators','Sealed System Parts',
+  'Taps, Mixers and Showers','Trunking','UFH','Unvented Cylinders','Valves','Wall Brackets','Waste & Drainage'
+];
+const ALLOWED_CONNECTIONS = [
+  'M-Press','End Feed','Compression','Flat Faced','Wipex','MLCP Press U','Push Fit','Solvent Weld','BSP','BSP Male','BSP Female'
+];
+// Per-category field behaviour. Entries marked assumed:true aren't explicitly
+// defined on the FIELD GUIDE sheet — they're a reasonable default based on
+// the category's fittings-family pattern, worth Rachel/Dan double-checking.
+const CATEGORY_FIELD_GUIDE = {
+  'Radiators':            { a:'Height (mm)', b:'Length (mm)', c:'Type (K1/K2/K3/P+ or Towel Single/Double)', mainConn:false, colour:true, brand:true, range:true },
+  'Fittings M-Press':     { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true },
+  'Fittings End Feed':    { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true },
+  'Fittings MLCP':        { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true, range:true },
+  'Fittings Compression': { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true, assumed:true },
+  'Fittings Wipex':       { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true, assumed:true },
+  'Push Fit':             { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true },
+  'Waste & Drainage':     { a:'Nominal size (mm)', b:'Size 2 (mm)', c:null, mainConn:true, colour:true },
+  'Male/Female Irons':    { a:'Pipe size (mm)', b:'Thread size', c:null, mainConn:true },
+  'Fittings Flat Faced':  { a:'Size end A', b:'Size end B', c:null, mainConn:true, brand:true, range:true },
+  'Unvented Cylinders':   { a:'Capacity (litres)', b:'Body (Short/Standard/Slimline)', c:'Variant', brand:true, range:true },
+  'Clips':                { a:'Size (mm or M-thread) / range min', b:'Pack qty / range max', c:null },
+  'UFH':                  { a:'Pipe size (mm)', b:'Coil length (m)', c:null, brand:true, material:true },
+  'Heat Pumps + Accessories': { a:'Output (kW)', b:'Model year', c:'Ordering note', brand:true, range:true },
+  'Heat Pump Controls':   { a:null, b:null, c:null, brand:true },
+  'Taps, Mixers and Showers': { a:null, b:null, c:null, brand:true, range:true },
+  'Chemicals':            { a:'Size/volume', b:null, c:null, brand:true },
+  'Trunking':             { a:'Width (mm)', b:'Length', c:null, colour:true },
+  'Pipe':                 { a:'Size (mm)', b:'Coil/length', c:null, material:true },
+  // Not explicitly on FIELD GUIDE — sensible fittings-style default, flagged for review
+  'Boiler Controls':      { a:null, b:null, c:null, brand:true, assumed:true },
+  'Boiler Flues':         { a:'Size (mm)', b:null, c:null, brand:true, assumed:true },
+  'Boiler Spares':        { a:null, b:null, c:null, brand:true, assumed:true },
+  'Buffers/Volumisers/Back Up Heaters': { a:'Capacity (litres)', b:null, c:null, brand:true, assumed:true },
+  'Filters':              { a:'Size 1 (mm)', b:'Size 2 (mm)', c:null, mainConn:true, brand:true, assumed:true },
+  'Rad Valves':           { a:'Size 1 (mm)', b:'Size 2 (mm)', c:null, mainConn:true, colour:true, brand:true, assumed:true },
+  'Sealed System Parts':  { a:'Size (mm)', b:null, c:null, mainConn:true, brand:true, assumed:true },
+  'Valves':               { a:'Size 1 (mm)', b:'Size 2 (mm)', c:null, mainConn:true, colour:true, brand:true, assumed:true },
+  'Wall Brackets':        { a:null, b:null, c:null, assumed:true },
+  'Insulation':           { a:'Size 1 (mm)', b:'Size 2 (mm)', c:null, colour:true, assumed:true },
+};
+// From the ALIASES sheet — [alias(lowercased), canonical, field-scope]. field
+// is null for Brand aliases (apply everywhere); 'waste-size' only applies to
+// Waste & Drainage's size attributes.
+const ITEM_ALIASES = [
+  ['inch and a quarter','32','waste-size'], ['1 1/4"','32','waste-size'],
+  ['inch and a half','40','waste-size'], ['1 1/2"','40','waste-size'],
+  ['four inch','110','waste-size'], ['4"','110','waste-size'],
+  ['36mm','32','waste-size'], ['36','32','waste-size'],
+  ['43mm','40','waste-size'], ['43','40','waste-size'],
+  ['41mm','40','waste-size'], ['41','40','waste-size'],
+  ['valliant','Vaillant','brand'], ['thermrite','ThermRite','brand'],
+  ['al interface','AI Interface','type'],
+  ['twl','Towel Rail','type'],
+  ['type 22','K2','attrC'], ['type 21','K1','attrC'], ['type 11','K1','attrC'], ['type 33','K3','attrC'],
+];
+
+// Extracted from the RULES/REVIEW sheets of the Sept 2026 database migration.
+// Matched by barcode only — the row numbers in the original notes refer to an
+// intermediate migration step, not this app's data, so they aren't used here.
+const MIGRATION_DUPLICATE_GROUPS = [
+  { category:'Clips', description:'Talon Nail in Clips 15mm 100 Pack', barcodes:["HM7K1EC9TSG", "HM7K0ZXQDSP"], conflict:false },
+  { category:'Filters', description:'Secon Renewables Impel Mag & Strainer & Ball Valve 1 1/4', barcodes:["HM7K1F6IXHB", "HM3I1AF8T8I"], conflict:false },
+  { category:'Fittings End Feed', description:'End Feed 90 Deg Elbow 28mm', barcodes:["HM3H2KS8P2K", "HM7K1GZXVVH"], conflict:false },
+  { category:'Fittings End Feed', description:'End Feed 45 Deg Elbow 35mm', barcodes:["HM7K1IM6DI7", "HM3H2GYNMHL"], conflict:false },
+  { category:'Fittings End Feed', description:'End Feed Long Tail 15-10mm EF reducers', barcodes:["HM3H35WI2YI", "HMBRQKVDQ9C"], conflict:false },
+  { category:'Fittings MLCP', description:'Tweetop Press 25 x 25 x 16mm Reducing Tee', barcodes:["HM3IL0W2P2L", "HM7K1KT40XS"], conflict:true },
+  { category:'Fittings M-Press', description:'M-Press 90 Deg Elbow 28mm', barcodes:["HM3H75I2ERK", "HM7K1N1RA8E"], conflict:true },
+  { category:'Fittings M-Press', description:'M-Press Reducing Tee 35-35-15mm Tee Reducing Tee 35x35x15mm', barcodes:["HM3H8HYYYLB", "HM7K1RM0OCH"], conflict:true },
+  { category:'Heat Pumps + Accessories', description:'Valliant aroTHERM plus (2026) 3.5kW with AI Interface included 3.5kW', barcodes:["HM7K1SX254B", "HM7K1DRABEE"], conflict:false },
+  { category:'Heat Pumps + Accessories', description:'Valliant aroTHERM plus (2026) 5kW with AI Interface included 5kW', barcodes:["HM7K1VIVXRP", "HM7K1FMH7VS"], conflict:false },
+  { category:'Heat Pumps + Accessories', description:'Valliant aroTHERM plus (2026) 7kW with AI Interface included 7kW', barcodes:["HM7K1YERHTQ", "HM7K1GDEEOF"], conflict:false },
+  { category:'Heat Pumps + Accessories', description:'Valliant aroTHERM plus (2026) 10kW with AI Interface included 10kW', barcodes:["HM7K1ZLARFA", "HM7K1ICMTJJ"], conflict:false },
+  { category:'Heat Pumps + Accessories', description:'Valliant aroTHERM plus (2026) 12kW with AI Interface included 12kW', barcodes:["HM7K220GF3B", "HM7K1LC256X"], conflict:false },
+  { category:'Heat Pumps + Accessories', description:'Valliant AroTHERM Pro (2026) 5kW with Al Interface included 5kW', barcodes:["HM7K23MICLN", "HM7K1NDV8A7"], conflict:false },
+  { category:'Heat Pumps + Accessories', description:'Valliant Heat Pump Interface for PLUS/PRO Interface', barcodes:["HM7K25QDE8K", "HM7K1PH0TD5"], conflict:false },
+  { category:'Heat Pumps + Accessories', description:'Valliant AroTHERM Pro (2026) 7kW with Al Interface included 7kW 7kW', barcodes:["HM7K26YOB7P", "HM7K1RBUU28"], conflict:false },
+  { category:'Heat Pumps + Accessories', description:'Condensate Pro Maintenance Coat 250ml Tin', barcodes:["HMUBTSKJ905", "HM3H1WFRY6N"], conflict:false },
+  { category:'Insulation', description:'Climaflex Pipe Insulation Slit 2m 22 x 19mm', barcodes:["HM7K29O2EQD", "HM3H1G7GP07"], conflict:false },
+  { category:'Insulation', description:'Climaflex Pipe Insulation Slit 2m 15 x 19mm', barcodes:["HM7K24FLOCN", "HM3H1E5U06M"], conflict:false },
+  { category:'Insulation', description:'Primary Pro Jacket for the 1” / 28 mm Inta Antifreeze valve', barcodes:["HM3HW4QF797", "HM7K26R8Y5D", "HMSJJV3MN8B"], conflict:true },
+  { category:'Male/Female Irons', description:'Male Iron M-Press Straight Connector 28mm x 1', barcodes:["HM7K28UGLVB", "HM3H9CHKA1W"], conflict:false },
+  { category:'Male/Female Irons', description:'Male Iron M-Press Straight Connector 35mm x 1', barcodes:["HM7K29I4LFB", "HM3HV7S9MFQ"], conflict:true },
+  { category:'Rad Valves', description:'Inta i-therm Angled Thermostatic Radiator Valve Twin Pack 15mm', barcodes:["HM3H5KRSB76", "HM7LASPMZ5L"], conflict:true },
+  { category:'Radiators', description:'Stelrad Softline 600 2000 K2', barcodes:["HM7LAHVVS2C", "HM3IEPNEZXU"], conflict:false },
+  { category:'Radiators', description:'Stelrad Classic Compact 500 1800 k3', barcodes:["HM7LAMJ7YBT", "HM7L8LAHTND"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1600 k2', barcodes:["HM7LAH4H5YA", "HM3IEF3MJFV"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1600 P+', barcodes:["HM7LALRY1NN", "HM3IEM76YRO"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1400 k2', barcodes:["HM7LAFG1MOD", "HM3IE3WTJPH"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1400 P+', barcodes:["HM7LAL09LKQ", "HM3IEBSYSCW"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1200 K2', barcodes:["HM7LAF2FM08", "HM3IDW8G60K"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1200 P+', barcodes:["HM7LAKAK48Q", "HM3IDYY0SGE"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1100 P+', barcodes:["HM7LAJFIAB8", "HM3IDPQWA3B"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 700 1000 k1', barcodes:["HM7K26M0T7P", "HM3IFVV0VO4"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1000 k2', barcodes:["HM7LAE9YN7E", "HM3IDLP5EZH"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 1000 P+', barcodes:["HM7LAINVKKB", "HM3IDNK2EWQ"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 700 800 k2', barcodes:["HM7K25QYJFM", "HM3IH8SY40G"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 800 k1', barcodes:["HM7K28QGX6S", "HM3IFMHOD9T"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 800 k2', barcodes:["HM7K2DSA9TC", "HM3IFOKM7ES"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 700 K2', barcodes:["HM7K2CKFSG2", "HM3IFGECY0C"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 700 P+', barcodes:["HM7LAGCGIRX", "HM3IFI7EYUP"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 600 K2', barcodes:["HM7K2B8K1HQ", "HM3IF74Y2HM"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 600 P+', barcodes:["HM7LAEPFLEQ", "HM3IFC1WVN7"], conflict:false },
+  { category:'Radiators', description:'Stelrad Softline 600 500 p+', barcodes:["HM7K28XTXVG", "HM3IEVH6OBO"], conflict:false },
+  { category:'UFH', description:'Edge Insulation Roll 50m', barcodes:["HM7LAOU5OD7", "HM7L8MOTE1Q"], conflict:false },
+  { category:'UFH', description:'Connector cores/eurocones 16mm x 3/4', barcodes:["HM3H1Y6IMNP", "HMT0WWNGURN"], conflict:false },
+  { category:'UFH', description:'Estimate Price Per M2 Profix Plus Panel 16mm MLCP All Materials Requir', barcodes:["HM7LAR5E6A9", "HM7L8OZJXAN"], conflict:true },
+  { category:'UFH', description:'75m2 25mm Overlay System (rough price only not cal', barcodes:["HM7LARXJV64", "HM7L8PC0H6X"], conflict:false },
+  { category:'Uncategorised', description:'ESBE 3-Way Diverter Valve 1.5', barcodes:["HM7K0SLBXPJ", "HM7K1AKRSS9"], conflict:false },
+];
+
+const MIGRATION_DELETED_RELICS = [
+  { barcode:'HM7LAO2LCEH', category:'UFH', note:'DELETED (barcode HM7LAO2LCEH): 122m2 20mm Overlay System 1 x 10 Port Emmeti Manifold 170 x Profix Plus Panels 1200x600x20' },
+  { barcode:'HM3GXQ0L3GE', category:'UFH', note:'DELETED (barcode HM3GXQ0L3GE): 130m2 Pipe in Screed MLCP System 1 x 11 Port Emmeti Manifold 3 x 50m +3 x 75m + 5 x 100m C' },
+  { barcode:'HM7LAPLX62V', category:'UFH', note:'DELETED (barcode HM7LAPLX62V): 40m2 20mm Overlay System + 40m2 Pipe in Screed MLCP System 1 x 10 Port Emmeti Manifold 55 ' },
+  { barcode:'HM7LAQDJLWS', category:'UFH', note:'DELETED (barcode HM7LAQDJLWS): 40m2 20mm Overlay System + 40m2 Pipe in Screed MLCP System 1 x 10 Port Emmeti Manifold 55 ' },
+  { barcode:'HM7L8MBGOFN', category:'UFH', note:'DELETED (barcode HM7L8MBGOFN): 122m2 20mm Overlay System 1 x 10 Port Emmeti Manifold 170 x Profix Plus Panels 1200x600x20' },
+  { barcode:'HM7L8O6H3K9', category:'UFH', note:'DELETED (barcode HM7L8O6H3K9): 40m2 20mm Overlay System + 40m2 Pipe in Screed MLCP System 1 x 10 Port Emmeti Manifold 55 ' },
+];
+
+const MIGRATION_NEEDS_MANUAL_REVIEW = [
+  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Radiators', note:'FOR RACHEL — 3 radiators added by Dan on 25-Sep via manage_items have NO App Barcode yet (Stelrad Softline 600x1800 K2 code 80602218; 700x400 K2 80702204; 700x500 K2 80702205). Assign barcodes in the stock app.' },
+  { category:'Fittings M-Press', barcode:'HM2YVDKRB2F', note:'FOR RACHEL — "40-32mm Reducer", barcode HM2YVDKRB2F: no code, no price, and 40/32 are not copper M-Press sizes (waste or steel). Looks like an unfinished app entry — what was scanned?' },
+  { category:'Fittings M-Press', barcode:'HMD9JOJVFRI', note:'FOR RACHEL — "42mm x 35mm Reducer", barcode HMD9JOJVFRI: plausible copper sizes but no code, no price. Unfinished app entry — what was scanned?' },
+  { category:'Valves', barcode:'HMEQPYQ5J5K', note:'FOR RACHEL — row with barcode HMEQPYQ5J5K reads only "Tesla Valve" in the source: no type, size or code. What is it?' },
+];
 const CATALOG_SUPPLIERS = [
   'Direct Plumbing Supplies', 'Floor Heating Warehouse', 'B.E.E The Smart Heating Merchant',
   'Pirate Heating Supplies', 'Screwfix', 'B.E.S', 'SECON', 'MONSTER PLUMB',
