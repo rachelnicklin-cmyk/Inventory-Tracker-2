@@ -694,6 +694,10 @@ td{padding:8px 9px;vertical-align:middle}
       <div class="admin-section">
         <h3>🔄 OneDrive Live Sync</h3>
         <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Keeps items, product codes &amp; prices in step with Rachel's master spreadsheet automatically. Stock levels are never touched by this — they only ever live in the app.</p>
+        <div style="background:#3a0808;border:1px solid #7f1d1d;border-radius:7px;padding:11px 13px;margin-bottom:12px">
+          <div style="font-weight:700;color:#ff6b6b;font-size:12px;margin-bottom:4px">⏸ Sync paused</div>
+          <div style="font-size:11px;color:#ffb0b0">The shared spreadsheet was restructured to a new column layout. This part of the app hasn't been rebuilt to match it yet, so sync is switched off to protect your data — it would otherwise misread the new columns in both directions. It'll come back once that rebuild is done.</div>
+        </div>
 
         <div id="odNotConfigured">
           <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:11px 13px;margin-bottom:10px">
@@ -4439,7 +4443,17 @@ let odSyncData = null; // working state between syncOneDriveNow() and applyOneDr
 // on success (results land in odSyncData) or false if it failed — the caller
 // decides how loudly to complain about a failure.
 async function computeOneDriveSyncData(quiet) {
-  if (!odConfig) { if (!quiet) toast('Not connected yet', 'error'); return false; }
+  // PAUSED: the shared spreadsheet was restructured to a new 40-column
+  // layout (Category | Brand | Range | Type | connections/attributes |
+  // Colour | Material | Manufacturers Code | 13 supplier pairs | App
+  // Barcode). This function still reads the OLD layout and would silently
+  // misinterpret every column, in both directions. Per RULES FOR RACHEL
+  // 1.2, sync must not touch that file again until it's rebuilt for the
+  // new columns. Remove this guard once that rebuild is done and tested.
+  if (!quiet) toast('OneDrive sync is paused — the shared spreadsheet was restructured and the app hasn\'t been updated to match yet. See Admin > OneDrive Sync for details.', 'error');
+  return false;
+  // Everything below is unchanged and unreachable while the guard above is in place —
+  // left intact deliberately so it's ready to reference/adapt when sync is rebuilt.
   let sessionId = null, token = null;
   try {
     token = await getGraphToken();
