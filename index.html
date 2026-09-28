@@ -4893,10 +4893,23 @@ async function disconnectOneDrive() {
 // Columns are found by header name, not position, so a column being moved
 // by hand doesn't break anything. Returns null-safe structured rows.
 function odParseGrid(grid) {
-  const headerRaw = grid[0] || [];
+  // The header row isn't assumed to be row 1 — a title or notes row above
+  // it is fine. We look for the first row holding both 'Category' and 'Type'.
+  let headerIdx = -1;
+  for (let r = 0; r < Math.min(grid.length, 20); r++) {
+    const cells = (grid[r] || []).map(h => String(h ?? '').trim().toLowerCase());
+    if (cells.includes('category') && cells.includes('type')) { headerIdx = r; break; }
+  }
+  if (headerIdx === -1) {
+    const seen = (grid[0] || []).map(h => String(h ?? '').trim()).filter(Boolean).slice(0, 12).join(' | ') || '(blank)';
+    const err = new Error(`No row with 'Category' and 'Type' headers in the first 20 rows. First row read: ${seen}`);
+    err.noLayout = true; throw err;
+  }
+  const headerRaw = grid[headerIdx] || [];
   const header = headerRaw.map(h => String(h ?? '').trim());
   const findCol = (name) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
   const cols = {
+    headerIdx,
     category: findCol('Category'), brand: findCol('Brand'), range: findCol('Range'), type: findCol('Type'),
     mainConn: findCol('Main Connection Type'), attrA: findCol('Attribute A'),
     connB: findCol('Connection Type B'), attrB: findCol('Attribute B'),
@@ -4914,12 +4927,13 @@ function odParseGrid(grid) {
     });
     if (codeIdx !== -1 || priceIdx !== -1) cols.supplierCols.push({ name: sup, codeIdx, priceIdx });
   });
-  if (cols.category === -1 || cols.type === -1 || cols.appBarcode === -1) {
-    throw new Error('Could not find the Category / Type / App Barcode columns — is this the restructured sheet?');
+  if (cols.appBarcode === -1) {
+    const err = new Error(`Found the Category/Type headers but no '${OD_APP_BARCODE_HEADER}' column. Headers read: ${header.filter(Boolean).join(' | ')}`);
+    err.noLayout = true; throw err;
   }
   const cell = (row, idx) => idx > -1 ? String(row[idx] ?? '').trim() : '';
   const rows = [];
-  for (let r = 1; r < grid.length; r++) {
+  for (let r = headerIdx + 1; r < grid.length; r++) {
     const row = grid[r] || [];
     const category = cell(row, cols.category), type = cell(row, cols.type);
     if (!category && !type) continue;
@@ -4947,6 +4961,40 @@ function odParseGrid(grid) {
 // ════════════════════════════════════════
 //  ONE-OFF: FILL IN APP ITEMS FROM EXCEL (read-only on Excel)
 // ════════════════════════════════════════
+async function odListWorksheets(token, sessionId) {
+  const resp = await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets`, token, {}, sessionId);
+  return (resp.value || []).map(w => w.name);
+}
+async function odReadWorksheetNamed(token, sessionId, name) {
+  const range = await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${encodeURIComponent(name)}')/usedRange(valuesOnly=true)`, token, {}, sessionId);
+  return range.values || [];
+}
+
+// Finds the tab holding the restructured layout: the configured one first,
+// then every other tab in the workbook. If it lands on a different tab, that
+// name is saved so the sync uses it from now on too.
+async function odFindLayoutSheet(token, sessionId) {
+  const tried = [];
+  const attempt = async (name) => {
+    const grid = await odReadWorksheetNamed(token, sessionId, name);
+    const parsed = odParseGrid(grid);
+    return { name, grid, ...parsed };
+  };
+  try { return await attempt(odConfig.worksheetName); }
+  catch (e) { tried.push(`${odConfig.worksheetName}: ${e.message}`); if (!e.noLayout) throw e; }
+  const names = (await odListWorksheets(token, sessionId)).filter(n => n !== odConfig.worksheetName);
+  for (const name of names) {
+    try {
+      const found = await attempt(name);
+      odConfig.worksheetName = name;
+      await db.collection('config').doc('onedrive').update({ worksheetName: name }).catch(() => {});
+      found.switched = true;
+      return found;
+    } catch (e) { tried.push(`${name}: ${e.message}`); if (!e.noLayout) throw e; }
+  }
+  throw new Error(`None of the tabs in the linked workbook have the restructured layout.\n\n${tried.join('\n')}\n\nIs the file linked in Admin > OneDrive Live Sync the restructured copy?`);
+}
+
 let excelBackfillPlan = null;
 
 async function openExcelBackfill() {
@@ -4960,10 +5008,10 @@ async function openExcelBackfill() {
   try {
     token = await getGraphToken();
     sessionId = await odCreateSession(token);
-    const grid = await odReadWorksheet(token, sessionId);
+    const found = await odFindLayoutSheet(token, sessionId);
     await odCloseSession(token, sessionId);
-    if (!grid.length) throw new Error('Spreadsheet appears to be empty');
-    const { rows } = odParseGrid(grid);
+    const { rows } = found;
+    const sheetNote = `Read from tab "${found.name}"${found.switched ? ' (the app was pointing at a different tab — updated)' : ''}${found.cols.headerIdx ? `, headers on row ${found.cols.headerIdx + 1}` : ''}.`;
 
     const byBarcode = {};
     rows.forEach(r => { if (r.appBarcode) byBarcode[r.appBarcode] = r; });
@@ -5018,11 +5066,11 @@ async function openExcelBackfill() {
       ${noBarcode.length ? `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#8ab4d8"><strong>${noBarcode.length} Excel row${noBarcode.length!==1?'s':''}</strong> have no App Barcode yet. Ignored here — the sync handles new products separately.</div>` : ''}
       ${badCategory.length ? `<div style="background:#2e2410;border:1px solid #4a3a10;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#f0a020"><strong>${badCategory.length} row${badCategory.length!==1?'s':''}</strong> use a category not on the fixed list (${[...new Set(badCategory.map(b=>b.category))].join(', ')}). Applied as-is so nothing is lost, but worth a look in Excel.</div>` : ''}
       ${keptAppCodes.length || keptAppSuppliers.length ? `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#8ab4d8">Kept rather than overwritten: ${keptAppCodes.length} manufacturer code${keptAppCodes.length!==1?'s':''} and ${keptAppSuppliers.length} supplier price${keptAppSuppliers.length!==1?'s':''} that exist in the app but not in Excel.</div>` : ''}
-      <div style="font-size:11px;color:#6b8fad;margin-top:6px">Stock levels, locations, notes and min stock are not touched. Nothing is written to Excel.</div>`;
+      <div style="font-size:11px;color:#6b8fad;margin-top:6px">${sheetNote}<br>Stock levels, locations, notes and min stock are not touched. Nothing is written to Excel.</div>`;
     if (updates.length) document.getElementById('excelBackfillApplyBtn').style.display = '';
   } catch (e) {
     if (token) await odCloseSession(token, sessionId).catch(() => {});
-    body.innerHTML = `<div style="color:#ff6b6b;font-size:12px">Couldn't read the spreadsheet: ${e.message}</div>`;
+    body.innerHTML = `<div style="color:#ff6b6b;font-size:12px;white-space:pre-wrap">Couldn't read the spreadsheet: ${e.message}</div>`;
   }
 }
 
