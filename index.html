@@ -692,6 +692,11 @@ td{padding:8px 9px;vertical-align:middle}
         </div>
       </div>
       <div class="admin-section">
+        <h3>📥 Fill In Items From Excel (one-off)</h3>
+        <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Reads the restructured spreadsheet and fills in Brand, Range, Type, sizes, connections, colour, material, code and supplier prices on every app item it can match by App Barcode. <strong style="color:#8ab4d8">Read-only on Excel</strong> — nothing is written to the shared file. Stock levels are never touched. You see a full summary before anything is applied.</p>
+        <button class="btn btn-primary" style="padding:7px 13px;font-size:12px" onclick="openExcelBackfill()">Check What Would Be Filled In</button>
+      </div>
+      <div class="admin-section">
         <h3>🔄 OneDrive Live Sync</h3>
         <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Keeps items, product codes &amp; prices in step with Rachel's master spreadsheet automatically. Stock levels are never touched by this — they only ever live in the app.</p>
         <div style="background:#3a0808;border:1px solid #7f1d1d;border-radius:7px;padding:11px 13px;margin-bottom:12px">
@@ -1296,6 +1301,20 @@ td{padding:8px 9px;vertical-align:middle}
 <!-- Return to Supplier -->
 <!-- Returns History -->
 <!-- Migration Duplicate Resolution -->
+<!-- One-off Excel → App backfill -->
+<div class="overlay" id="excelBackfillModal" onclick="if(event.target===this)closeModal('excelBackfillModal')">
+  <div class="modal" style="max-width:700px;max-height:88vh;overflow-y:auto">
+    <h2 style="font-size:14px;margin-bottom:4px">📥 Fill In Items From Excel</h2>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:12px">Excel is treated as the master for what each item <em>is</em>. This copies those details into the app, matched by App Barcode. The shared file itself is never written to.</p>
+    <div id="excelBackfillBody"><div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">Reading spreadsheet…</div></div>
+    <div id="excelBackfillProgress" style="display:none;font-size:11px;color:#8ab4d8;padding:8px 0"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('excelBackfillModal')">Close</button>
+      <button class="btn btn-primary" id="excelBackfillApplyBtn" style="display:none" onclick="applyExcelBackfill()">✓ Fill In App Items</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="migrationReviewModal" onclick="if(event.target===this)closeModal('migrationReviewModal')">
   <div class="modal" style="max-width:680px;max-height:88vh;overflow-y:auto">
     <h2 style="font-size:14px;margin-bottom:4px">📋 Migration Review</h2>
@@ -2515,11 +2534,22 @@ function composeItemName(f) {
   if (f.brand) parts.push(f.brand);
   if (f.range) parts.push(f.range);
   if (f.type) parts.push(f.type);
-  const sizeBits = [];
-  if (f.attrA) sizeBits.push(f.attrA);
-  if (f.attrB) sizeBits.push(f.attrB);
-  if (f.attrC) sizeBits.push(f.attrC);
-  if (sizeBits.length) parts.push(sizeBits.join('x') + (CATEGORY_FIELD_GUIDE[f.category]?.a?.includes('mm') ? 'mm' : ''));
+  // Units come from the FIELD GUIDE label for that attribute, and only
+  // attach to purely numeric values — so 28 → "28mm" but "K2" and "3m"
+  // stay exactly as written. Numeric mm sizes join as 28x15x28mm.
+  const guide = CATEGORY_FIELD_GUIDE[f.category] || {};
+  const isNum = v => /^\d+(\.\d+)?$/.test(v);
+  const unitOf = label => /\(mm\b/i.test(label||'') ? 'mm' : /\(kw\)/i.test(label||'') ? 'kW' : /\(litres\)/i.test(label||'') ? 'L' : /\(m\)/i.test(label||'') ? 'm' : '';
+  const mmSizes = [], others = [];
+  [['attrA','a'],['attrB','b'],['attrC','c']].forEach(([k,g]) => {
+    const v = String(f[k] ?? '').trim(); if (!v) return;
+    const unit = unitOf(guide[g]);
+    if (isNum(v) && unit === 'mm') mmSizes.push(v);
+    else if (isNum(v) && unit) others.push(v + unit);
+    else others.push(v);
+  });
+  if (mmSizes.length) parts.push(mmSizes.join('x') + 'mm');
+  parts.push(...others);
   if (f.mainConnectionType && f.mainConnectionType !== f.category) parts.push(f.mainConnectionType);
   if (f.colour) parts.push(f.colour);
   return parts.filter(Boolean).join(' ').trim() || '(unnamed item)';
@@ -4852,6 +4882,177 @@ async function disconnectOneDrive() {
   odConfig = null; odAccount = null; msalInstance = null;
   renderOneDriveStatus();
   toast('Disconnected', 'success');
+}
+
+// ════════════════════════════════════════
+//  NEW 40-COLUMN LAYOUT — SHARED PARSER
+//  (Sept 2026 restructure: Category | Brand | Range | Type | Main Conn |
+//   Attr A | Conn B | Attr B | Conn C | Attr C | Colour | Material |
+//   Manufacturers Code | 13 supplier code+price pairs | App Barcode)
+// ════════════════════════════════════════
+// Columns are found by header name, not position, so a column being moved
+// by hand doesn't break anything. Returns null-safe structured rows.
+function odParseGrid(grid) {
+  const headerRaw = grid[0] || [];
+  const header = headerRaw.map(h => String(h ?? '').trim());
+  const findCol = (name) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
+  const cols = {
+    category: findCol('Category'), brand: findCol('Brand'), range: findCol('Range'), type: findCol('Type'),
+    mainConn: findCol('Main Connection Type'), attrA: findCol('Attribute A'),
+    connB: findCol('Connection Type B'), attrB: findCol('Attribute B'),
+    connC: findCol('Connection Type C'), attrC: findCol('Attribute C'),
+    colour: findCol('Colour'), material: findCol('Material'), mfrCode: findCol('Manufacturers Code'),
+    appBarcode: header.findIndex(h => normHeader(h) === normHeader(OD_APP_BARCODE_HEADER)),
+    supplierCols: []
+  };
+  CATALOG_SUPPLIERS.forEach(sup => {
+    let codeIdx = -1, priceIdx = -1;
+    header.forEach((h, i) => {
+      const hl = h.toLowerCase();
+      if (hl.startsWith(sup.toLowerCase()) && hl.includes('product code')) codeIdx = i;
+      else if (hl === sup.toLowerCase()) priceIdx = i;
+    });
+    if (codeIdx !== -1 || priceIdx !== -1) cols.supplierCols.push({ name: sup, codeIdx, priceIdx });
+  });
+  if (cols.category === -1 || cols.type === -1 || cols.appBarcode === -1) {
+    throw new Error('Could not find the Category / Type / App Barcode columns — is this the restructured sheet?');
+  }
+  const cell = (row, idx) => idx > -1 ? String(row[idx] ?? '').trim() : '';
+  const rows = [];
+  for (let r = 1; r < grid.length; r++) {
+    const row = grid[r] || [];
+    const category = cell(row, cols.category), type = cell(row, cols.type);
+    if (!category && !type) continue;
+    const er = {
+      rowIndex: r, category, type,
+      brand: cell(row, cols.brand), range: cell(row, cols.range),
+      mainConnectionType: cell(row, cols.mainConn), attrA: cell(row, cols.attrA),
+      connectionTypeB: cell(row, cols.connB), attrB: cell(row, cols.attrB),
+      connectionTypeC: cell(row, cols.connC), attrC: cell(row, cols.attrC),
+      colour: cell(row, cols.colour), material: cell(row, cols.material),
+      mfrCode: cell(row, cols.mfrCode), appBarcode: cell(row, cols.appBarcode),
+      supplierData: {}
+    };
+    cols.supplierCols.forEach(sc => {
+      const code = sc.codeIdx !== -1 ? cell(row, sc.codeIdx) : '';
+      const price = sc.priceIdx !== -1 ? parseFloat(row[sc.priceIdx]) : NaN;
+      if (code || !isNaN(price)) er.supplierData[sc.name] = { code, price: isNaN(price) ? null : price };
+    });
+    er.description = composeItemName(er);
+    rows.push(er);
+  }
+  return { headerRaw, cols, rows };
+}
+
+// ════════════════════════════════════════
+//  ONE-OFF: FILL IN APP ITEMS FROM EXCEL (read-only on Excel)
+// ════════════════════════════════════════
+let excelBackfillPlan = null;
+
+async function openExcelBackfill() {
+  if (!odConfig || !odConfig.clientId) { toast('Connect to OneDrive first (Admin > OneDrive Live Sync)', 'error'); return; }
+  const body = document.getElementById('excelBackfillBody');
+  document.getElementById('excelBackfillApplyBtn').style.display = 'none';
+  document.getElementById('excelBackfillProgress').style.display = 'none';
+  body.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">Reading spreadsheet…</div>';
+  document.getElementById('excelBackfillModal').classList.add('open');
+  let token = null, sessionId = null;
+  try {
+    token = await getGraphToken();
+    sessionId = await odCreateSession(token);
+    const grid = await odReadWorksheet(token, sessionId);
+    await odCloseSession(token, sessionId);
+    if (!grid.length) throw new Error('Spreadsheet appears to be empty');
+    const { rows } = odParseGrid(grid);
+
+    const byBarcode = {};
+    rows.forEach(r => { if (r.appBarcode) byBarcode[r.appBarcode] = r; });
+
+    const updates = [], unmatchedApp = [], keptAppCodes = [], keptAppSuppliers = [], badCategory = [];
+    items.forEach(item => {
+      const er = item.barcode ? byBarcode[item.barcode] : null;
+      if (!er) { if (!item.isTestData) unmatchedApp.push(item); return; }
+      // Excel is the master for descriptive data. Two deliberate exceptions,
+      // both reported rather than silently overwritten:
+      //  - a manufacturer code the app has but Excel doesn't is kept
+      //  - a supplier the app has but Excel doesn't is kept
+      const mfr_code = er.mfrCode || item.mfr_code || '';
+      if (!er.mfrCode && item.mfr_code) keptAppCodes.push(item);
+      const suppliers = {};
+      Object.entries(er.supplierData).forEach(([s, d]) => {
+        suppliers[s] = { code: d.code, price: d.price, min_order: item.suppliers?.[s]?.min_order || '' };
+      });
+      Object.entries(item.suppliers || {}).forEach(([s, d]) => {
+        if (!suppliers[s]) { suppliers[s] = d; keptAppSuppliers.push({ item, supplier: s }); }
+      });
+      if (er.category && !RACHEL_CATEGORIES.includes(er.category)) badCategory.push({ item, category: er.category });
+      const data = {
+        category: er.category, brand: er.brand, range: er.range, type: er.type,
+        mainConnectionType: er.mainConnectionType, attrA: er.attrA,
+        connectionTypeB: er.connectionTypeB, attrB: er.attrB,
+        connectionTypeC: er.connectionTypeC, attrC: er.attrC,
+        colour: er.colour, material: er.material, mfr_code,
+        name: er.description, suppliers, syncedToMaster: true
+      };
+      const changed = Object.keys(data).some(k => k === 'suppliers' ? JSON.stringify(item.suppliers||{}) !== JSON.stringify(suppliers) : (item[k] ?? '') !== (data[k] ?? ''));
+      if (changed) updates.push({ item, data, oldName: item.name, newName: er.description });
+    });
+    const appBarcodes = new Set(items.map(i => i.barcode).filter(Boolean));
+    const excelOnly = rows.filter(r => r.appBarcode && !appBarcodes.has(r.appBarcode));
+    const noBarcode = rows.filter(r => !r.appBarcode);
+
+    excelBackfillPlan = { updates };
+    const sample = updates.slice(0, 12);
+    body.innerHTML = `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+        <span style="background:#0f2e1a;color:#4cdf8a;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${updates.length} app item${updates.length!==1?'s':''} will be filled in</span>
+        <span style="background:#0f1e30;color:#6b8fad;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${items.length - updates.length - unmatchedApp.length} already match</span>
+        <span style="background:#0f1e30;color:#6b8fad;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${rows.length} rows in Excel</span>
+      </div>
+      ${sample.length ? `<div style="font-size:10px;color:#4a6880;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Example of what changes (first ${sample.length})</div>
+      <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:8px 11px;margin-bottom:12px">
+        ${sample.map(u => `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid #1e3248"><span style="color:#4a6880">${u.oldName}</span> → <span style="color:#e8edf2">${u.newName}</span></div>`).join('')}
+      </div>` : ''}
+      ${unmatchedApp.length ? `<div style="background:#2e2410;border:1px solid #4a3a10;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#f0a020"><strong>${unmatchedApp.length} app item${unmatchedApp.length!==1?'s':''} not in Excel</strong> (no matching barcode) — left exactly as they are. Includes any unregistered or recently added items.<div style="color:#c8b080;margin-top:4px">${unmatchedApp.slice(0,8).map(i=>i.name).join(' · ')}${unmatchedApp.length>8?' · …':''}</div></div>` : ''}
+      ${excelOnly.length ? `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#8ab4d8"><strong>${excelOnly.length} Excel row${excelOnly.length!==1?'s':''}</strong> carry a barcode that isn't in the app (likely retired duplicates). Ignored here.</div>` : ''}
+      ${noBarcode.length ? `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#8ab4d8"><strong>${noBarcode.length} Excel row${noBarcode.length!==1?'s':''}</strong> have no App Barcode yet. Ignored here — the sync handles new products separately.</div>` : ''}
+      ${badCategory.length ? `<div style="background:#2e2410;border:1px solid #4a3a10;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#f0a020"><strong>${badCategory.length} row${badCategory.length!==1?'s':''}</strong> use a category not on the fixed list (${[...new Set(badCategory.map(b=>b.category))].join(', ')}). Applied as-is so nothing is lost, but worth a look in Excel.</div>` : ''}
+      ${keptAppCodes.length || keptAppSuppliers.length ? `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#8ab4d8">Kept rather than overwritten: ${keptAppCodes.length} manufacturer code${keptAppCodes.length!==1?'s':''} and ${keptAppSuppliers.length} supplier price${keptAppSuppliers.length!==1?'s':''} that exist in the app but not in Excel.</div>` : ''}
+      <div style="font-size:11px;color:#6b8fad;margin-top:6px">Stock levels, locations, notes and min stock are not touched. Nothing is written to Excel.</div>`;
+    if (updates.length) document.getElementById('excelBackfillApplyBtn').style.display = '';
+  } catch (e) {
+    if (token) await odCloseSession(token, sessionId).catch(() => {});
+    body.innerHTML = `<div style="color:#ff6b6b;font-size:12px">Couldn't read the spreadsheet: ${e.message}</div>`;
+  }
+}
+
+async function applyExcelBackfill() {
+  if (!excelBackfillPlan || !excelBackfillPlan.updates.length) return;
+  const { updates } = excelBackfillPlan;
+  if (!confirm(`Fill in ${updates.length} app item${updates.length!==1?'s':''} from Excel?\n\nThis updates descriptive details, codes and prices in the app only. Stock levels aren't touched and nothing is written to Excel.`)) return;
+  const btn = document.getElementById('excelBackfillApplyBtn');
+  const prog = document.getElementById('excelBackfillProgress');
+  btn.disabled = true; prog.style.display = 'block';
+  setSync('busy');
+  try {
+    const CHUNK = 400; // Firestore batches cap at 500 writes
+    for (let i = 0; i < updates.length; i += CHUNK) {
+      const batch = db.batch();
+      updates.slice(i, i + CHUNK).forEach(u => batch.update(db.collection('items').doc(u.item.id), u.data));
+      await batch.commit();
+      prog.textContent = `Filled in ${Math.min(i + CHUNK, updates.length)} of ${updates.length}…`;
+    }
+    await logAction('edit', 'Items filled in from Excel', `${currentUser.name} copied structured details, codes and prices from the restructured spreadsheet onto ${updates.length} item(s). Excel not written to.`);
+    setSync('ok');
+    excelBackfillPlan = null;
+    closeModal('excelBackfillModal');
+    toast(`${updates.length} item${updates.length!==1?'s':''} filled in from Excel`, 'success');
+    await reloadData();
+  } catch (e) {
+    setSync('err');
+    prog.textContent = 'Failed partway: ' + e.message + ' — tap "Check What Would Be Filled In" again; anything already done won\'t be repeated.';
+  }
+  btn.disabled = false;
 }
 
 let odSyncData = null; // working state between syncOneDriveNow() and applyOneDriveSync()
