@@ -2596,6 +2596,171 @@ function normalizeAlias(value, field, category) {
   return v;
 }
 
+// ════════════════════════════════════════
+//  CASCADING PICKERS IN ADD / EDIT ITEM
+//  Brand → Range → Type → sizes, each narrowed by what's already chosen and
+//  learnt from the catalogue itself. "＋ Add new…" is always there as a
+//  deliberate choice. Reaching an exact existing item is surfaced, not saved.
+// ════════════════════════════════════════
+const CASCADE_FIELDS = [
+  { key:'brand', input:'f-brand' }, { key:'range', input:'f-range' }, { key:'type', input:'f-type' },
+  { key:'attrA', input:'f-attra' }, { key:'attrB', input:'f-attrb' }, { key:'attrC', input:'f-attrc' },
+];
+const CASCADE_NEW = '__new__';
+let cascadeNewMode = {}; // input id -> true while the person is typing a new value
+const normV = v => String(v ?? '').trim();
+const lowV = v => normV(v).toLowerCase();
+
+function cascadeInit() {
+  if (document.getElementById('f-brand-pick')) return;
+  CASCADE_FIELDS.forEach(f => {
+    const inp = document.getElementById(f.input);
+    const sel = document.createElement('select');
+    sel.id = f.input + '-pick';
+    sel.style.marginBottom = '4px';
+    sel.addEventListener('change', () => onCascadePick(f.input));
+    inp.parentNode.insertBefore(sel, inp);
+    const hint = document.createElement('div');
+    hint.id = f.input + '-hint';
+    hint.style.cssText = 'font-size:10px;margin-top:3px;display:none';
+    inp.parentNode.appendChild(hint);
+    inp.addEventListener('change', () => { cascadeRefresh(); });
+  });
+  document.getElementById('f-mainconn').addEventListener('change', () => cascadeRefresh());
+  ['f-colour','f-material'].forEach(id => document.getElementById(id).addEventListener('input', () => cascadeShowExisting()));
+  ['f-connb','f-connc'].forEach(id => document.getElementById(id).addEventListener('change', () => cascadeShowExisting()));
+}
+
+function cascadeFormValues() {
+  const g = id => normV(document.getElementById(id).value);
+  return { category:g('f-cat'), brand:g('f-brand'), range:g('f-range'), type:g('f-type'), mainConnectionType:g('f-mainconn'),
+    attrA:g('f-attra'), connectionTypeB:g('f-connb'), attrB:g('f-attrb'), connectionTypeC:g('f-connc'), attrC:g('f-attrc'),
+    colour:g('f-colour'), material:g('f-material') };
+}
+
+// The catalogue the pickers learn from: real items in this category.
+function cascadePool(cat, excludeSelf) {
+  return items.filter(i => i.category === cat && !i.isTestData && !i.unregistered && !(excludeSelf && i.id === editId));
+}
+
+// Distinct values for one field, from items matching everything chosen
+// above it. Keeps the most-used spelling where only case differs.
+function cascadeOptions(pool, idx, vals) {
+  const key = CASCADE_FIELDS[idx].key;
+  const upstream = CASCADE_FIELDS.slice(0, idx).map(f => f.key);
+  if (idx >= 3 && vals.mainConnectionType) upstream.push('mainConnectionType');
+  const rows = pool.filter(i => upstream.every(u => !vals[u] || lowV(i[u]) === lowV(vals[u])));
+  const counts = {};
+  rows.forEach(i => { const v = normV(i[key]); if (!v) return; const l = v.toLowerCase(); counts[l] = counts[l] || {}; counts[l][v] = (counts[l][v] || 0) + 1; });
+  const opts = Object.values(counts).map(m => Object.entries(m).sort((a, b) => b[1] - a[1])[0][0]);
+  const num = v => /^\d+(\.\d+)?$/.test(v) ? parseFloat(v) : null;
+  return opts.sort((a, b) => (num(a) != null && num(b) != null) ? num(a) - num(b) : a.localeCompare(b, 'en', { numeric: true }));
+}
+
+function cascadeRefresh() {
+  cascadeInit();
+  const vals = cascadeFormValues();
+  const pool = vals.category ? cascadePool(vals.category) : [];
+  CASCADE_FIELDS.forEach((f, idx) => {
+    const inp = document.getElementById(f.input), sel = document.getElementById(f.input + '-pick'), hint = document.getElementById(f.input + '-hint');
+    const opts = cascadeOptions(pool, idx, vals);
+    const cur = normV(inp.value);
+    const match = opts.find(o => o.toLowerCase() === cur.toLowerCase());
+    if (match && match !== cur) inp.value = match; // adopt the catalogue's spelling
+    if (!opts.length) {
+      // Nothing to pick from yet (empty category / brand-new combination): plain typing
+      sel.style.display = 'none'; inp.style.display = '';
+      hint.style.display = cur ? 'block' : 'none';
+      hint.style.color = '#f0a020';
+      hint.textContent = cur ? 'New — not in the catalogue yet' : '';
+      return;
+    }
+    sel.style.display = '';
+    const newMode = cascadeNewMode[f.input] || (cur && !match);
+    sel.innerHTML = '<option value="">Select…</option>' +
+      opts.map(o => `<option value="${o.replace(/"/g, '&quot;')}"${match === o && !newMode ? ' selected' : ''}>${o.replace(/</g, '&lt;')}</option>`).join('') +
+      `<option value="${CASCADE_NEW}"${newMode ? ' selected' : ''}>＋ Add new…</option>`;
+    inp.style.display = newMode ? '' : 'none';
+    hint.style.display = newMode ? 'block' : 'none';
+    hint.style.color = '#f0a020';
+    hint.textContent = newMode ? (cur ? `New — "${cur}" isn't used in ${vals.category} yet. Check it isn't a different spelling of one in the list.` : 'Type the new value') : '';
+  });
+  updateNamePreview();
+  cascadeShowExisting();
+}
+
+function onCascadePick(inputId) {
+  const sel = document.getElementById(inputId + '-pick'), inp = document.getElementById(inputId);
+  if (sel.value === CASCADE_NEW) {
+    cascadeNewMode[inputId] = true; inp.value = ''; inp.style.display = '';
+    cascadeRefresh(); inp.focus(); return;
+  }
+  cascadeNewMode[inputId] = false;
+  inp.value = sel.value;
+  // Anything below that no longer fits what's been chosen is cleared, so the
+  // next picker only offers combinations that actually exist.
+  const idx = CASCADE_FIELDS.findIndex(f => f.input === inputId);
+  const pool = cascadePool(document.getElementById('f-cat').value);
+  for (let d = idx + 1; d < CASCADE_FIELDS.length; d++) {
+    const di = document.getElementById(CASCADE_FIELDS[d].input);
+    if (!normV(di.value) || cascadeNewMode[CASCADE_FIELDS[d].input]) continue;
+    const opts = cascadeOptions(pool, d, cascadeFormValues());
+    if (!opts.some(o => o.toLowerCase() === lowV(di.value))) di.value = '';
+  }
+  cascadeRefresh();
+}
+
+// The exact existing item these choices describe, if there is one.
+const CASCADE_SIG_FIELDS = ['brand','range','type','mainConnectionType','attrA','connectionTypeB','attrB','connectionTypeC','attrC','colour','material'];
+function cascadeExactMatch() {
+  const vals = cascadeFormValues();
+  if (!vals.category || !vals.type) return null;
+  return cascadePool(vals.category, true).find(i => CASCADE_SIG_FIELDS.every(k => lowV(i[k]) === lowV(vals[k]))) || null;
+}
+function cascadeShowExisting() {
+  let box = document.getElementById('cascadeExisting');
+  if (!box) {
+    box = document.createElement('div'); box.id = 'cascadeExisting';
+    box.style.cssText = 'display:none;background:#3a0808;border:1px solid #7f1d1d;border-radius:6px;padding:8px 10px;margin:-4px 0 12px';
+    const dup = document.getElementById('dupItemWarning'); dup.parentNode.insertBefore(box, dup);
+  }
+  const m = cascadeExactMatch();
+  if (!m) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = `<div style="font-size:11px;font-weight:700;color:#ff6b6b;margin-bottom:4px">This item already exists</div>
+    <div style="font-size:11px;color:#e8edf2">${m.name} <span style="color:#4a6880">· ${m.barcode || 'no barcode'} · stock ${totalQty(m)}</span></div>
+    <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
+      <button class="btn btn-outline" style="padding:4px 9px;font-size:11px" onclick="closeModal('itemModal');openEdit('${m.id}')">Open that item instead</button>
+    </div>
+    <div style="font-size:10px;color:#6b8fad;margin-top:5px">If yours is genuinely different, change whichever detail makes it different (size, connection, colour…) — it can't be saved as an identical twin.</div>`;
+}
+
+// Save-time rules for the item form. Returns an error string, or null.
+const BRAND_NOT_SUPPLIER = () => [...new Set([...(typeof CATALOG_SUPPLIERS !== 'undefined' ? CATALOG_SUPPLIERS : []), ...(typeof ALL_SUPPLIERS !== 'undefined' ? ALL_SUPPLIERS : [])])]
+  .filter(s => !/^stelrad$/i.test(s)).map(s => s.toLowerCase());
+const SIZE_REQUIRED_CATS = ['Fittings M-Press','Fittings End Feed','Fittings MLCP','Fittings Compression','Fittings Wipex','Fittings Flat Faced','Push Fit','Waste & Drainage','Male/Female Irons','Pipe','Insulation'];
+function itemFormRuleError(v) {
+  const guide = CATEGORY_FIELD_GUIDE[v.category] || {};
+  if (v.brand) {
+    const b = v.brand.toLowerCase();
+    if (BRAND_NOT_SUPPLIER().some(sup => sup === b || (sup.split(' ')[0].length > 3 && sup.includes(' ') && sup.split(' ')[0] === b)))
+      return `"${v.brand}" is a supplier, not a maker. Brand is who makes it (rule 2.2) — put the supplier's code and price in the Suppliers section instead.`;
+  }
+  if (guide.a && SIZE_REQUIRED_CATS.includes(v.category) && !v.attrA) return `${v.category} items need a size: please fill in "${guide.a}".`;
+  if (guide.mainConn && /^Fittings |^Push Fit$|^Waste & Drainage$|^Male\/Female Irons$/.test(v.category) && !v.mainConnectionType) return `Please choose the Main Connection Type for this ${v.category} item.`;
+  const twin = cascadeExactMatch();
+  if (twin) return `This exact item already exists: "${twin.name}" (${twin.barcode || 'no barcode'}). Use that one, or change the detail that makes yours different.`;
+  return null;
+}
+// Rule 6.5: waste sizes or words outside Waste & Drainage. A warning, not a block.
+function itemFormStrayWarning(v) {
+  if (v.category === 'Waste & Drainage') return null;
+  const words = /\b(waste|soil|condense)\b/i.test([v.type, v.range].join(' '));
+  const sizes = ['attrA','attrB','attrC'].some(k => ['36','41','43'].includes(normV(v[k])));
+  if (!words && !sizes) return null;
+  return `Rule 6.5 check: ${words ? 'the word waste/soil/condense' : 'a waste size (36/41/43)'} appears on an item filed under ${v.category}. Is it actually a Waste & Drainage item?\n\nOK = save it under ${v.category} anyway. Cancel = go back and change the category.`;
+}
+
 // Builds the display name from structured fields, in FIELD GUIDE reading
 // order: Brand | Range | Type | Main Conn | Attr A | Conn B | Attr B | Conn
 // C | Attr C | Colour note. Sizes never reordered (rule 2.5).
@@ -2660,7 +2825,7 @@ function onCategoryFieldsChange(keepValues) {
     bSel.innerHTML = '<option value="">Same as Main</option>' + ALLOWED_CONNECTIONS.map(c => `<option value="${c}"${c===curB?' selected':''}>${c}</option>`).join('');
     cSel.innerHTML = '<option value="">Same as Main</option>' + ALLOWED_CONNECTIONS.map(c => `<option value="${c}"${c===curC?' selected':''}>${c}</option>`).join('');
   }
-  updateNamePreview();
+  cascadeRefresh();
   checkDuplicateItemName();
 }
 
@@ -2821,6 +2986,7 @@ function checkDuplicateItemName() {
 
 function openAdd() {
   editId = null;
+  cascadeNewMode = {};
   document.getElementById('modalTitle').textContent = 'Add Item';
   ['mfr','notes','brand','range','type','attra','attrb','attrc','colour','material'].forEach(k => document.getElementById('f-'+k).value='');
   document.getElementById('f-barcode').value = generateBarcodeValue();
@@ -2841,6 +3007,7 @@ function openAdd() {
 }
 function openEdit(id) {
   const item = items.find(i => i.id===id); editId=id;
+  cascadeNewMode = {};
   document.getElementById('modalTitle').textContent = item.unregistered ? '🚩 Complete Unregistered Item' : 'Edit Item';
   populateCatDropdown(item.category||'');
   document.getElementById('f-brand').value = item.brand||'';
@@ -2903,6 +3070,11 @@ async function saveItem() {
   const connectionTypeB = document.getElementById('f-connb').value;
   const connectionTypeC = document.getElementById('f-connc').value;
   const name = composeItemName({ category:cat, brand, range, type, mainConnectionType, attrA, attrB, attrC, colour });
+  const ruleVals = { category:cat, brand, range, type, mainConnectionType, attrA, connectionTypeB, attrB, connectionTypeC, attrC, colour, material };
+  const ruleErr = itemFormRuleError(ruleVals);
+  if (ruleErr) { errEl.textContent = ruleErr; errEl.style.display='block'; return; }
+  const stray = itemFormStrayWarning(ruleVals);
+  if (stray && !confirm(stray)) return;
   if (!editId) {
     const strongMatch = items.find(it => wordOverlapScore(name, it.name) >= 0.85);
     if (strongMatch && !confirm(`Rule 1.9 — search before creating: this looks very similar to an existing item: "${strongMatch.name}".\n\nAdd it as a separate new item anyway? Tap Cancel to go back and use the existing one instead.`)) return;
@@ -4236,16 +4408,13 @@ const RACHEL_CATEGORIES = [
 const ALLOWED_CONNECTIONS = [
   'M-Press','End Feed','Compression','Flat Faced','Wipex','MLCP Press U','Push Fit','Solvent Weld','BSP','BSP Male','BSP Female'
 ];
-// Per-category field behaviour. Entries marked assumed:true aren't explicitly
-// defined on the FIELD GUIDE sheet — they're a reasonable default based on
-// the category's fittings-family pattern, worth Rachel/Dan double-checking.
+// Per-category field behaviour, from the FIELD GUIDE sheet plus the
+// categories confirmed separately (marked below).
 const CATEGORY_FIELD_GUIDE = {
   'Radiators':            { a:'Height (mm)', b:'Length (mm)', c:'Type (K1/K2/K3/P+ or Towel Single/Double)', mainConn:false, colour:true, brand:true, range:true },
   'Fittings M-Press':     { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true },
   'Fittings End Feed':    { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true },
   'Fittings MLCP':        { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true, range:true },
-  'Fittings Compression': { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true, assumed:true },
-  'Fittings Wipex':       { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true, assumed:true },
   'Push Fit':             { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true },
   'Waste & Drainage':     { a:'Nominal size (mm)', b:'Size 2 (mm)', c:null, mainConn:true, colour:true },
   'Male/Female Irons':    { a:'Pipe size (mm)', b:'Thread size', c:null, mainConn:true },
@@ -4259,17 +4428,19 @@ const CATEGORY_FIELD_GUIDE = {
   'Chemicals':            { a:'Size/volume', b:null, c:null, brand:true },
   'Trunking':             { a:'Width (mm)', b:'Length', c:null, colour:true },
   'Pipe':                 { a:'Size (mm)', b:'Coil/length', c:null, material:true },
-  // Not explicitly on FIELD GUIDE — sensible fittings-style default, flagged for review
-  'Boiler Controls':      { a:null, b:null, c:null, brand:true, assumed:true },
-  'Boiler Flues':         { a:'Size (mm)', b:null, c:null, brand:true, assumed:true },
-  'Boiler Spares':        { a:null, b:null, c:null, brand:true, assumed:true },
-  'Buffers/Volumisers/Back Up Heaters': { a:'Capacity (litres)', b:null, c:null, brand:true, assumed:true },
-  'Filters':              { a:'Size 1 (mm)', b:'Size 2 (mm)', c:null, mainConn:true, brand:true, assumed:true },
-  'Rad Valves':           { a:'Size 1 (mm)', b:'Size 2 (mm)', c:null, mainConn:true, colour:true, brand:true, assumed:true },
-  'Sealed System Parts':  { a:'Size (mm)', b:null, c:null, mainConn:true, brand:true, assumed:true },
-  'Valves':               { a:'Size 1 (mm)', b:'Size 2 (mm)', c:null, mainConn:true, colour:true, brand:true, assumed:true },
-  'Wall Brackets':        { a:null, b:null, c:null, assumed:true },
-  'Insulation':           { a:'Size 1 (mm)', b:'Size 2 (mm)', c:null, colour:true, assumed:true },
+  // Confirmed with Dan, 7 Oct 2026, from how each category is used in Excel
+  'Fittings Compression': { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true },
+  'Fittings Wipex':       { a:'Size 1 (mm)', b:'Size 2 (mm)', c:'Size 3 (mm)', mainConn:true, brand:true, range:true },
+  'Boiler Controls':      { a:null, b:null, c:null, brand:true },
+  'Boiler Flues':         { a:null, b:null, c:null, brand:true },
+  'Boiler Spares':        { a:null, b:null, c:null, brand:true },
+  'Buffers/Volumisers/Back Up Heaters': { a:'Capacity (litres)', b:null, c:null, brand:true, range:true },
+  'Filters':              { a:'Pipe size (mm or BSP)', b:null, c:null, mainConn:true, brand:true },
+  'Rad Valves':           { a:'Size (mm or BSP)', b:'Size 2 (mm, if reducing)', c:null, mainConn:true, colour:true, brand:true },
+  'Sealed System Parts':  { a:'Size (mm or BSP)', b:'Size 2 (mm, if reducing)', c:null, mainConn:true, brand:true, material:true },
+  'Valves':               { a:'Size (mm or BSP)', b:'Size 2 (mm, if reducing)', c:null, mainConn:true, colour:true, brand:true, range:true, material:true },
+  'Wall Brackets':        { a:null, b:null, c:null, brand:true, range:true },
+  'Insulation':           { a:'Pipe size (mm)', b:'Wall thickness (mm)', c:'Length (m)', colour:true, brand:true },
 };
 // From the ALIASES sheet — [alias(lowercased), canonical, field-scope]. field
 // is null for Brand aliases (apply everywhere); 'waste-size' only applies to
