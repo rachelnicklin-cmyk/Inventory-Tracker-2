@@ -2248,10 +2248,56 @@ async function uploadReturnPhotos(returnRefForPath) {
 // ════════════════════════════════════════
 let migrationTab = 'dup';
 
-function openMigrationReview() {
+// Ticks for "Needs Your Input" entries, kept in Firestore so they survive
+// reloads and are shared between admins.
+let migManualDone = {};
+async function loadMigManualDone() {
+  try { const d = await db.collection('config').doc('migrationReview').get(); migManualDone = (d.exists && d.data().manualDone) || {}; }
+  catch (e) { console.warn('Could not load review ticks', e); }
+}
+// Works out from the live app data whether an entry has already been dealt
+// with. Returns a short reason, or null if it still needs a look.
+function migManualAutoDone(m) {
+  const live = items.filter(i => !i.isTestData);
+  if (m.wasteTwinSize) {
+    const seen = {};
+    for (const i of live) {
+      if (i.category !== 'Waste & Drainage' || String(i.attrA ?? '') !== m.wasteTwinSize) continue;
+      const key = [i.type, i.mainConnectionType, i.attrA, i.connectionTypeB, i.attrB, i.colour, i.material, i.brand, i.range].map(x => String(x ?? '').trim().toLowerCase()).join('|');
+      if (seen[key] && seen[key] !== i.barcode) return null; // a twin is still in the app
+      seen[key] = i.barcode;
+    }
+    return `No ${m.wasteTwinSize}mm twins left in the app`;
+  }
+  if (m.mfrCodes) {
+    const have = m.mfrCodes.filter(c => live.some(i => String(i.mfr_code || '').trim() === c && i.barcode));
+    return have.length === m.mfrCodes.length ? 'All now in the app with barcodes' : null;
+  }
+  if (m.barcode) {
+    const it = live.find(i => i.barcode === m.barcode);
+    if (!it) return 'Item deleted from the app';
+    if (m.doneWhenCategory && it.category === m.doneWhenCategory) return `Now filed under ${m.doneWhenCategory}`;
+    if (m.doneWhenPriced && Object.values(it.suppliers || {}).some(d => Number(d.price) > 0)) return 'Now has a supplier code and price';
+  }
+  return null;
+}
+function migManualRemaining() {
+  return MIGRATION_NEEDS_MANUAL_REVIEW.filter((m, idx) => !migManualDone['m' + idx] && !migManualAutoDone(m)).length;
+}
+async function toggleMigManualDone(idx, done) {
+  const id = 'm' + idx;
+  if (done) migManualDone[id] = { by: currentUser?.name || 'Someone', at: Date.now() }; else delete migManualDone[id];
+  try { await db.collection('config').doc('migrationReview').set({ manualDone: migManualDone }, { merge: false }); }
+  catch (e) { toast('Could not save: ' + e.message, 'error'); }
+  document.getElementById('migManualCount').textContent = migManualRemaining();
+  renderMigrationManualTab();
+}
+
+async function openMigrationReview() {
+  await loadMigManualDone();
   document.getElementById('migDupCount').textContent = MIGRATION_DUPLICATE_GROUPS.length;
   document.getElementById('migDelCount').textContent = MIGRATION_DELETED_RELICS.length;
-  document.getElementById('migManualCount').textContent = MIGRATION_NEEDS_MANUAL_REVIEW.length;
+  document.getElementById('migManualCount').textContent = migManualRemaining();
   setMigrationTab('dup');
   document.getElementById('migrationReviewModal').classList.add('open');
 }
@@ -2359,12 +2405,25 @@ async function deleteMigrationRelic(index) {
 
 function renderMigrationManualTab() {
   const el = document.getElementById('migrationReviewBody');
-  el.innerHTML = `<div style="font-size:11px;color:#6b8fad;margin-bottom:10px">These can't be matched by barcode from the data given — they need a human look, not an app action.</div>` +
-    MIGRATION_NEEDS_MANUAL_REVIEW.map(m => `
-    <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:8px;padding:10px 13px;margin-bottom:8px">
-      <div style="font-size:11px;font-weight:700;color:#f0a020">${m.category || ''}${m.barcode ? ' · '+m.barcode : ''}</div>
-      <div style="font-size:11px;color:#c8d8e8;margin-top:4px">${m.note}</div>
-    </div>`).join('');
+  const all = MIGRATION_NEEDS_MANUAL_REVIEW.map((m, idx) => {
+    const auto = migManualAutoDone(m), tick = migManualDone['m' + idx];
+    return { m, idx, auto, tick, done: !!(auto || tick) };
+  });
+  const open = all.filter(x => !x.done), done = all.filter(x => x.done);
+  const card = (x) => `
+    <div style="background:#0f1e30;border:1px solid ${x.done ? '#1a4a2a' : '#1e3248'};border-radius:8px;padding:10px 13px;margin-bottom:8px;${x.done ? 'opacity:.55' : ''}">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+        <div style="font-size:11px;font-weight:700;color:${x.done ? '#4cdf8a' : '#f0a020'}">${x.done ? '✓ ' : ''}${x.m.category || ''}${x.m.barcode ? ' · ' + x.m.barcode : ''}</div>
+        ${x.auto ? '' : x.tick
+          ? `<button class="btn btn-outline" style="padding:3px 8px;font-size:10px" onclick="toggleMigManualDone(${x.idx}, false)">Undo</button>`
+          : `<button class="btn btn-outline" style="padding:3px 8px;font-size:10px;white-space:nowrap" onclick="toggleMigManualDone(${x.idx}, true)">✓ Mark done</button>`}
+      </div>
+      <div style="font-size:11px;color:#c8d8e8;margin-top:4px">${x.m.note}</div>
+      ${x.done ? `<div style="font-size:10px;color:#4cdf8a;margin-top:4px">${x.auto ? 'Resolved automatically — ' + x.auto : 'Marked done by ' + x.tick.by + ' on ' + new Date(x.tick.at).toLocaleDateString('en-GB')}</div>` : ''}
+    </div>`;
+  el.innerHTML = `<div style="font-size:11px;color:#6b8fad;margin-bottom:10px">These need a human look. Where the app can tell an entry has been dealt with, it ticks it off by itself; otherwise tap <strong>Mark done</strong> once you've sorted it.</div>`
+    + (open.length ? open.map(card).join('') : '<div style="text-align:center;color:#4cdf8a;font-size:12px;padding:12px 0">✓ Nothing left that needs your input</div>')
+    + (done.length ? `<div style="font-size:10px;font-weight:700;color:#4a6880;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 7px">Done (${done.length})</div>` + done.map(card).join('') : '');
 }
 
 async function openReturnsHistory() {
@@ -4292,18 +4351,18 @@ const MIGRATION_DELETED_RELICS = [
 ];
 
 const MIGRATION_NEEDS_MANUAL_REVIEW = [
-  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Waste & Drainage', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Waste & Drainage', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Waste & Drainage', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Waste & Drainage', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
-  { category:'Radiators', note:'FOR RACHEL — 3 radiators added by Dan on 25-Sep via manage_items have NO App Barcode yet (Stelrad Softline 600x1800 K2 code 80602218; 700x400 K2 80702204; 700x500 K2 80702205). Assign barcodes in the stock app.' },
-  { category:'Fittings M-Press', barcode:'HM2YVDKRB2F', note:'FOR RACHEL — "40-32mm Reducer", barcode HM2YVDKRB2F: no code, no price, and 40/32 are not copper M-Press sizes (waste or steel). Looks like an unfinished app entry — what was scanned?' },
-  { category:'Fittings M-Press', barcode:'HMD9JOJVFRI', note:'FOR RACHEL — "42mm x 35mm Reducer", barcode HMD9JOJVFRI: plausible copper sizes but no code, no price. Unfinished app entry — what was scanned?' },
+  { category:'Waste & Drainage', wasteTwinSize:'32', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', wasteTwinSize:'32', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', wasteTwinSize:'32', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', wasteTwinSize:'32', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', wasteTwinSize:'32', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', wasteTwinSize:'32', note:'36mm renamed to nominal 32 — now twins an existing 32mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', wasteTwinSize:'40', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', wasteTwinSize:'40', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Waste & Drainage', wasteTwinSize:'40', note:'43mm renamed to nominal 40 — now twins an existing 40mm row. Both rows and both barcodes kept; Rachel to resolve in the stock app.' },
+  { category:'Radiators', mfrCodes:['80602218','80702204','80702205'], note:'FOR RACHEL — 3 radiators added by Dan on 25-Sep via manage_items have NO App Barcode yet (Stelrad Softline 600x1800 K2 code 80602218; 700x400 K2 80702204; 700x500 K2 80702205). Assign barcodes in the stock app.' },
+  { category:'Fittings M-Press', barcode:'HM2YVDKRB2F', doneWhenCategory:'Waste & Drainage', note:'FOR RACHEL — "40-32mm Reducer", barcode HM2YVDKRB2F: no code, no price, and 40/32 are not copper M-Press sizes (waste or steel). Looks like an unfinished app entry — what was scanned?' },
+  { category:'Fittings M-Press', barcode:'HMD9JOJVFRI', doneWhenPriced:true, note:'FOR RACHEL — "42mm x 35mm Reducer", barcode HMD9JOJVFRI: plausible copper sizes but no code, no price. Unfinished app entry — what was scanned?' },
   { category:'Valves', barcode:'HMEQPYQ5J5K', note:'FOR RACHEL — row with barcode HMEQPYQ5J5K reads only "Tesla Valve" in the source: no type, size or code. What is it?' },
 ];
 const CATALOG_SUPPLIERS = [
