@@ -694,14 +694,19 @@ td{padding:8px 9px;vertical-align:middle}
       <div class="admin-section">
         <h3>📥 Fill In Items From Excel (one-off)</h3>
         <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Reads the restructured spreadsheet and fills in Brand, Range, Type, sizes, connections, colour, material, code and supplier prices on every app item it can match by App Barcode. <strong style="color:#8ab4d8">Read-only on Excel</strong> — nothing is written to the shared file. Stock levels are never touched. You see a full summary before anything is applied.</p>
-        <button class="btn btn-primary" style="padding:7px 13px;font-size:12px" onclick="openExcelBackfill()">Check What Would Be Filled In</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary" style="padding:7px 13px;font-size:12px" onclick="openExcelBackfill()">Check What Would Be Filled In (from OneDrive)</button>
+          <button class="btn btn-outline" style="padding:7px 13px;font-size:12px" onclick="document.getElementById('excelBackfillFile').click()">📂 Or choose the Excel file from this computer</button>
+          <input type="file" id="excelBackfillFile" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="openExcelBackfillFromFile(this.files[0]); this.value=''">
+        </div>
+        <p style="font-size:10px;color:#4a6880;margin-top:6px">The second option needs no Microsoft sign-in — pick the restructured file straight from your OneDrive folder. Still read-only: the file is only read, never changed.</p>
       </div>
       <div class="admin-section">
         <h3>🔄 OneDrive Live Sync</h3>
         <p style="font-size:11px;color:#4a6880;margin-bottom:10px">Keeps items, product codes &amp; prices in step with Rachel's master spreadsheet automatically. Stock levels are never touched by this — they only ever live in the app.</p>
-        <div style="background:#3a0808;border:1px solid #7f1d1d;border-radius:7px;padding:11px 13px;margin-bottom:12px">
-          <div style="font-weight:700;color:#ff6b6b;font-size:12px;margin-bottom:4px">⏸ Sync paused</div>
-          <div style="font-size:11px;color:#ffb0b0">The shared spreadsheet was restructured to a new column layout. This part of the app hasn't been rebuilt to match it yet, so sync is switched off to protect your data — it would otherwise misread the new columns in both directions. It'll come back once that rebuild is done.</div>
+        <div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:11px 13px;margin-bottom:12px">
+          <div style="font-weight:700;color:#8ab4d8;font-size:12px;margin-bottom:4px">🪞 How the sync works (one-way mirror)</div>
+          <div style="font-size:11px;color:#6b8fad"><strong style="color:#8ab4d8">Excel is the master for what an item is</strong> — category, brand, type, sizes, codes and prices flow Excel → app. <strong style="color:#8ab4d8">The app is the master for what happens to it</strong> — stock, jobs and transfers never leave the app. The only things ever written to Excel are an App Barcode into an empty barcode cell, or a brand-new row at the bottom for an item that was created in the app. Existing Excel cells are never overwritten.</div>
         </div>
 
         <div id="odNotConfigured">
@@ -900,13 +905,19 @@ td{padding:8px 9px;vertical-align:middle}
 <div class="overlay" id="odSyncReviewModal" onclick="if(event.target===this)closeModal('odSyncReviewModal')">
   <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
     <h2 style="font-size:14px;margin-bottom:4px">🔄 OneDrive Sync Review</h2>
-    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">Barcode-matched items apply automatically below. Anything matched by name needs your confirmation first — check carefully, similar names can be different products.</p>
+    <p style="font-size:11px;color:#6b8fad;margin-bottom:14px">Excel → app changes apply automatically below. Anything matched by name needs your confirmation first — check carefully, similar names can be different products. Nothing in an existing Excel cell is ever overwritten.</p>
     <div id="odReviewSummary" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
     <div id="odApplyProgress" style="display:none;font-size:11px;color:#f0a020;background:#2e2410;border:1px solid #4a3a10;border-radius:6px;padding:8px 10px;margin-bottom:14px"></div>
 
     <div id="odNeedsConfirmSection" style="display:none">
       <div style="font-size:10px;font-weight:700;color:#f0a020;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">⚠ Needs your confirmation — possible matches by name</div>
       <div id="odNeedsConfirmRows" style="margin-bottom:16px"></div>
+    </div>
+
+    <div id="odConflictSection" style="display:none">
+      <div style="font-size:10px;font-weight:700;color:#ff6b6b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">⚠ Edited in the app, but Excel says something different</div>
+      <p style="font-size:10px;color:#6b8fad;margin-bottom:7px">Excel is the master for these details. Ticked = take Excel's version now. Unticked = leave the app's version alone this time (it will not be sent to Excel — change the Excel row if you want to keep it).</p>
+      <div id="odConflictRows" style="margin-bottom:16px"></div>
     </div>
 
     <div id="odNewFromExcelSection" style="display:none">
@@ -917,7 +928,7 @@ td{padding:8px 9px;vertical-align:middle}
     <div style="font-size:10px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Will update from Excel → App</div>
     <div id="odToAppRows" style="max-height:180px;overflow-y:auto;margin-bottom:16px"></div>
 
-    <div style="font-size:10px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Will send from App → Excel</div>
+    <div style="font-size:10px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">New rows to add at the bottom of Excel (items created in the app)</div>
     <div id="odToExcelRows" style="max-height:180px;overflow-y:auto"></div>
 
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
@@ -4845,35 +4856,61 @@ async function odReadWorksheet(token, sessionId) {
   return range.values || [];
 }
 
-async function odWriteRow(token, rowIndex0based, values, sessionId) {
-  const addr = `A${rowIndex0based + 1}:${odColLetter(values.length - 1)}${rowIndex0based + 1}`;
-  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [values] }) }, sessionId);
-  await odSleep(250); // small gap between writes — keeps us comfortably under Graph's rate limit
-}
-
+// Writes one cell. Used only for putting an App Barcode into an EMPTY
+// barcode cell — never for anything else.
 async function odWriteCell(token, rowIndex0based, colIndex0based, value, sessionId) {
   const addr = `${odColLetter(colIndex0based)}${rowIndex0based + 1}`;
-  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [[value]] }) }, sessionId);
+  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${encodeURIComponent(odConfig.worksheetName)}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [[value]] }) }, sessionId);
   await odSleep(250);
 }
 
-async function odAppendRow(token, values, nextRowIndex0based, sessionId) {
-  const addr = `A${nextRowIndex0based + 1}:${odColLetter(values.length - 1)}${nextRowIndex0based + 1}`;
-  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${odConfig.worksheetName}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [values] }) }, sessionId);
+// Writes a brand-new row into blank cells below the last used row. Never
+// used on a row that already has data.
+async function odWriteNewRow(token, rowIndex0based, colIndex0based, values, sessionId) {
+  const addr = `${odColLetter(colIndex0based)}${rowIndex0based + 1}:${odColLetter(colIndex0based + values.length - 1)}${rowIndex0based + 1}`;
+  await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${encodeURIComponent(odConfig.worksheetName)}')/range(address='${addr}')`, token, { method: 'PATCH', body: JSON.stringify({ values: [values] }) }, sessionId);
   await odSleep(250);
 }
 
-function odRowToValues(row, totalCols, cols) {
-  const values = new Array(totalCols).fill('');
-  values[cols.category] = row.category || '';
-  values[cols.product] = row.description || '';
-  values[cols.mfrCode] = row.mfrCode || '';
+// Lays an app item out across the 40-column layout, by header position.
+function odRowValuesFromItem(item, headerRaw, cols) {
+  const values = new Array(headerRaw.length).fill('');
+  const put = (idx, v) => { if (idx != null && idx > -1) values[idx] = v ?? ''; };
+  put(cols.category, item.category); put(cols.brand, item.brand); put(cols.range, item.range); put(cols.type, item.type || item.name);
+  put(cols.mainConn, item.mainConnectionType); put(cols.attrA, item.attrA);
+  put(cols.connB, item.connectionTypeB); put(cols.attrB, item.attrB);
+  put(cols.connC, item.connectionTypeC); put(cols.attrC, item.attrC);
+  put(cols.colour, item.colour); put(cols.material, item.material); put(cols.mfrCode, item.mfr_code);
   cols.supplierCols.forEach(sc => {
-    const d = (row.supplierData || {})[sc.name];
+    const d = (item.suppliers || {})[sc.name];
     if (d) { if (sc.codeIdx !== -1) values[sc.codeIdx] = d.code || ''; if (sc.priceIdx !== -1) values[sc.priceIdx] = d.price ?? ''; }
   });
-  if (cols.appBarcode != null) values[cols.appBarcode] = row.appBarcode || '';
+  put(cols.appBarcode, item.barcode);
   return values;
+}
+
+// What the app record should look like given its Excel row (Excel is the
+// master for all of this). Two deliberate exceptions, both kept rather than
+// blanked: a manufacturer code or a supplier the app has but Excel doesn't.
+function odItemDataFromExcelRow(item, er) {
+  const kept = { codes: 0, suppliers: 0 };
+  const mfr_code = er.mfrCode || item.mfr_code || '';
+  if (!er.mfrCode && item.mfr_code) kept.codes++;
+  const suppliers = {};
+  Object.entries(er.supplierData).forEach(([sn, d]) => {
+    suppliers[sn] = { code: d.code, price: d.price, min_order: item.suppliers?.[sn]?.min_order || '' };
+  });
+  Object.entries(item.suppliers || {}).forEach(([sn, d]) => { if (!suppliers[sn]) { suppliers[sn] = d; kept.suppliers++; } });
+  const data = {
+    category: er.category, brand: er.brand, range: er.range, type: er.type,
+    mainConnectionType: er.mainConnectionType, attrA: er.attrA,
+    connectionTypeB: er.connectionTypeB, attrB: er.attrB,
+    connectionTypeC: er.connectionTypeC, attrC: er.attrC,
+    colour: er.colour, material: er.material, mfr_code,
+    name: er.description, suppliers, syncedToMaster: true
+  };
+  const changed = Object.keys(data).filter(k => k === 'syncedToMaster' ? false : k === 'suppliers' ? JSON.stringify(item.suppliers || {}) !== JSON.stringify(suppliers) : (item[k] ?? '') !== (data[k] ?? ''));
+  return { data, changed, kept };
 }
 
 async function disconnectOneDrive() {
@@ -4967,8 +5004,15 @@ async function odListWorksheets(token, sessionId) {
 }
 async function odReadWorksheetNamed(token, sessionId, name) {
   const range = await graphFetch(`/drives/${odConfig.driveId}/items/${odConfig.itemId}/workbook/worksheets('${encodeURIComponent(name)}')/usedRange(valuesOnly=true)`, token, {}, sessionId);
-  return range.values || [];
+  const grid = range.values || [];
+  // usedRange may not start at A1 — remember where it does start so any
+  // write goes to the right absolute cell.
+  grid.rowOffset = range.rowIndex || 0;
+  grid.colOffset = range.columnIndex || 0;
+  return grid;
 }
+// Absolute (0-based) sheet position of a cell in a grid returned above.
+function odAbs(grid, r, c) { return { row: r + (grid.rowOffset || 0), col: c + (grid.colOffset || 0) }; }
 
 // Finds the tab holding the restructured layout: the configured one first,
 // then every other tab in the workbook. If it lands on a different tab, that
@@ -4997,21 +5041,59 @@ async function odFindLayoutSheet(token, sessionId) {
 
 let excelBackfillPlan = null;
 
-async function openExcelBackfill() {
-  if (!odConfig || !odConfig.clientId) { toast('Connect to OneDrive first (Admin > OneDrive Live Sync)', 'error'); return; }
+function excelBackfillModalStart() {
   const body = document.getElementById('excelBackfillBody');
   document.getElementById('excelBackfillApplyBtn').style.display = 'none';
   document.getElementById('excelBackfillProgress').style.display = 'none';
   body.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">Reading spreadsheet…</div>';
   document.getElementById('excelBackfillModal').classList.add('open');
+  return body;
+}
+
+// Source A: the linked OneDrive file (needs Microsoft sign-in)
+async function openExcelBackfill() {
+  if (!odConfig || !odConfig.clientId) { toast('Connect to OneDrive first (Admin > OneDrive Live Sync) — or use "choose the Excel file from this computer"', 'error'); return; }
+  const body = excelBackfillModalStart();
   let token = null, sessionId = null;
   try {
     token = await getGraphToken();
     sessionId = await odCreateSession(token);
     const found = await odFindLayoutSheet(token, sessionId);
     await odCloseSession(token, sessionId);
-    const { rows } = found;
-    const sheetNote = `Read from tab "${found.name}"${found.switched ? ' (the app was pointing at a different tab — updated)' : ''}${found.cols.headerIdx ? `, headers on row ${found.cols.headerIdx + 1}` : ''}.`;
+    const sheetNote = `Read from OneDrive, tab "${found.name}"${found.switched ? ' (the app was pointing at a different tab — updated)' : ''}${found.cols.headerIdx ? `, headers on row ${found.cols.headerIdx + 1}` : ''}.`;
+    renderExcelBackfillPlan(body, found.rows, sheetNote);
+  } catch (e) {
+    if (token) await odCloseSession(token, sessionId).catch(() => {});
+    body.innerHTML = `<div style="color:#ff6b6b;font-size:12px;white-space:pre-wrap">Couldn't read the spreadsheet: ${e.message}</div>`;
+  }
+}
+
+// Source B: an .xlsx picked from this computer (no sign-in; read-only, the
+// file is parsed in the browser and never uploaded or modified)
+async function openExcelBackfillFromFile(file) {
+  if (!file) return;
+  const body = excelBackfillModalStart();
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const tried = [];
+    let found = null;
+    for (const name of wb.SheetNames) {
+      const grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+      try { found = { name, ...odParseGrid(grid) }; break; }
+      catch (e) { tried.push(`${name}: ${e.message}`); if (!e.noLayout) throw e; }
+    }
+    if (!found) throw new Error(`None of the tabs in "${file.name}" have the restructured layout.\n\n${tried.join('\n')}\n\nIs this the restructured copy? (It should have REVIEW, FIELD GUIDE, ALIASES and RULES FOR RACHEL tabs.)`);
+    const sheetNote = `Read from "${file.name}" on this computer, tab "${found.name}"${found.cols.headerIdx ? `, headers on row ${found.cols.headerIdx + 1}` : ''}. The file itself was not changed.`;
+    renderExcelBackfillPlan(body, found.rows, sheetNote);
+  } catch (e) {
+    body.innerHTML = `<div style="color:#ff6b6b;font-size:12px;white-space:pre-wrap">Couldn't read the spreadsheet: ${e.message}</div>`;
+  }
+}
+
+// Shared: build and show the plan from parsed rows (whichever source they came from)
+function renderExcelBackfillPlan(body, rows, sheetNote) {
+  {
 
     const byBarcode = {};
     rows.forEach(r => { if (r.appBarcode) byBarcode[r.appBarcode] = r; });
@@ -5068,9 +5150,6 @@ async function openExcelBackfill() {
       ${keptAppCodes.length || keptAppSuppliers.length ? `<div style="background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:9px 11px;margin-bottom:8px;font-size:11px;color:#8ab4d8">Kept rather than overwritten: ${keptAppCodes.length} manufacturer code${keptAppCodes.length!==1?'s':''} and ${keptAppSuppliers.length} supplier price${keptAppSuppliers.length!==1?'s':''} that exist in the app but not in Excel.</div>` : ''}
       <div style="font-size:11px;color:#6b8fad;margin-top:6px">${sheetNote}<br>Stock levels, locations, notes and min stock are not touched. Nothing is written to Excel.</div>`;
     if (updates.length) document.getElementById('excelBackfillApplyBtn').style.display = '';
-  } catch (e) {
-    if (token) await odCloseSession(token, sessionId).catch(() => {});
-    body.innerHTML = `<div style="color:#ff6b6b;font-size:12px;white-space:pre-wrap">Couldn't read the spreadsheet: ${e.message}</div>`;
   }
 }
 
@@ -5105,111 +5184,59 @@ async function applyExcelBackfill() {
 
 let odSyncData = null; // working state between syncOneDriveNow() and applyOneDriveSync()
 
-// Does the actual fetch + match work, without touching any UI. Returns true
-// on success (results land in odSyncData) or false if it failed — the caller
-// decides how loudly to complain about a failure.
+// ════════════════════════════════════════
+//  ONE-WAY MIRROR SYNC (Sept 2026)
+//  Excel → app: every descriptive field, matched by App Barcode.
+//  App → Excel: ONLY (a) an App Barcode written into an EMPTY barcode
+//  cell, or (b) a brand-new row appended for an item created in the app.
+//  No existing Excel cell is ever overwritten.
+// ════════════════════════════════════════
 async function computeOneDriveSyncData(quiet) {
-  // PAUSED: the shared spreadsheet was restructured to a new 40-column
-  // layout (Category | Brand | Range | Type | connections/attributes |
-  // Colour | Material | Manufacturers Code | 13 supplier pairs | App
-  // Barcode). This function still reads the OLD layout and would silently
-  // misinterpret every column, in both directions. Per RULES FOR RACHEL
-  // 1.2, sync must not touch that file again until it's rebuilt for the
-  // new columns. Remove this guard once that rebuild is done and tested.
-  if (!quiet) toast('OneDrive sync is paused — the shared spreadsheet was restructured and the app hasn\'t been updated to match yet. See Admin > OneDrive Sync for details.', 'error');
-  return false;
-  // Everything below is unchanged and unreachable while the guard above is in place —
-  // left intact deliberately so it's ready to reference/adapt when sync is rebuilt.
   let sessionId = null, token = null;
   try {
     token = await getGraphToken();
     sessionId = await odCreateSession(token);
-    const grid = await odReadWorksheet(token, sessionId);
-    if (!grid.length) throw new Error('Spreadsheet appears to be empty');
-
-    const headerRaw = grid[0];
-    const header = headerRaw.map(normHeader);
-    const cols = {};
-    header.forEach((h, i) => {
-      if (h === 'category') cols.category = i;
-      else if (h === 'name') cols.name = i;
-      else if (h === 'product') cols.product = i;
-      else if (h === 'name3') cols.name3 = i;
-      else if (h === 'name4') cols.name4 = i;
-      else if (h.includes('manufacturers code')) cols.mfrCode = i;
-      else if (h === normHeader(OD_APP_BARCODE_HEADER)) cols.appBarcode = i;
-    });
-    cols.supplierCols = [];
-    CATALOG_SUPPLIERS.forEach(sup => {
-      const supNorm = normHeader(sup);
-      let codeIdx = -1, priceIdx = -1;
-      header.forEach((h, i) => { if (h.startsWith(supNorm) && h.includes('product code')) codeIdx = i; else if (h === supNorm) priceIdx = i; });
-      if (codeIdx !== -1 || priceIdx !== -1) cols.supplierCols.push({ name: sup, codeIdx, priceIdx });
-    });
-    if (cols.category == null || cols.mfrCode == null) throw new Error('Could not find the expected Category/Manufacturers Code columns in the sheet');
-
-    // Add the App Barcode column if it doesn't exist yet
-    let totalCols = headerRaw.length;
-    if (cols.appBarcode == null) {
-      cols.appBarcode = totalCols;
-      totalCols += 1;
-      const newHeader = [...headerRaw, OD_APP_BARCODE_HEADER];
-      await odWriteRow(token, 0, newHeader, sessionId);
-    }
-
-    const excelRows = [];
-    for (let r = 1; r < grid.length; r++) {
-      const row = grid[r] || [];
-      const parts = [cols.name, cols.product, cols.name3, cols.name4].map(idx => idx != null ? String(row[idx] || '').trim() : '').filter(Boolean);
-      const description = parts.join(' ').trim();
-      if (!description) continue;
-      const mfrCode = cols.mfrCode != null ? String(row[cols.mfrCode] || '').trim() : '';
-      const appBarcode = cols.appBarcode != null ? String(row[cols.appBarcode] || '').trim() : '';
-      const supplierData = {};
-      cols.supplierCols.forEach(sc => {
-        const code = sc.codeIdx !== -1 ? String(row[sc.codeIdx] || '').trim() : '';
-        const price = sc.priceIdx !== -1 ? parseFloat(row[sc.priceIdx]) : NaN;
-        if (code || !isNaN(price)) supplierData[sc.name] = { code, price: isNaN(price) ? null : price };
-      });
-      excelRows.push({ rowIndex: r, category: cols.category != null ? String(row[cols.category] || '').trim() : '', description, mfrCode, appBarcode, supplierData });
-    }
+    const found = await odFindLayoutSheet(token, sessionId);
+    await odCloseSession(token, sessionId);
+    const { grid, headerRaw, cols, rows: excelRows } = found;
 
     const byBarcode = {};
     excelRows.forEach(r => { if (r.appBarcode) byBarcode[r.appBarcode] = r; });
 
-    const toApplyToApp = [], toApplyToExcel = [], needsConfirmation = [];
-
-    items.forEach(item => {
-      const matchRow = item.barcode ? byBarcode[item.barcode] : null;
-      if (matchRow) {
-        const appSupNorm = Object.fromEntries(Object.entries(item.suppliers || {}).map(([k, v]) => [k, { code: v.code || '', price: v.price ?? null }]));
-        const excelDiffers = JSON.stringify(matchRow.supplierData) !== JSON.stringify(appSupNorm);
-        if (!item.syncedToMaster) toApplyToExcel.push({ item, rowIndex: matchRow.rowIndex, isNew: false });
-        else if (excelDiffers) toApplyToApp.push({ item, excelRow: matchRow });
-      } else if (!item.syncedToMaster) {
-        let best = null, bestScore = 0;
-        excelRows.forEach(er => {
-          if (er.appBarcode) return;
-          if (item.mfr_code && er.mfrCode && item.mfr_code.toLowerCase() === er.mfrCode.toLowerCase()) { best = er; bestScore = 1; return; }
-          const score = wordOverlapScore(item.name, er.description);
-          if (score > bestScore) { bestScore = score; best = er; }
-        });
-        if (best && bestScore >= 0.6) needsConfirmation.push({ item, excelRow: best, score: bestScore, confirmed: true });
-        else toApplyToExcel.push({ item, rowIndex: null, isNew: true });
+    const toApplyToApp = [], conflicts = [], needsConfirmation = [], newRowsForExcel = [], kept = { codes: 0, suppliers: 0 };
+    const liveItems = items.filter(i => !i.isTestData);
+    liveItems.forEach(item => {
+      const er = item.barcode ? byBarcode[item.barcode] : null;
+      if (er) {
+        const { data, changed, kept: k } = odItemDataFromExcelRow(item, er);
+        kept.codes += k.codes; kept.suppliers += k.suppliers;
+        if (!changed.length) { if (!item.syncedToMaster) toApplyToApp.push({ item, data, changed, silent: true }); return; }
+        // Edited in the app since the last sync AND Excel differs: surface it
+        // rather than silently letting either side win.
+        if (item.syncedToMaster === false) conflicts.push({ item, data, changed, takeExcel: true });
+        else toApplyToApp.push({ item, data, changed });
+        return;
       }
+      if (item.unregistered) return; // engineer's stub — waits until an admin completes it
+      // No Excel row carries this barcode. Is there an unclaimed Excel row that
+      // looks like the same product? (manufacturer code beats name similarity)
+      let best = null, bestScore = 0;
+      excelRows.forEach(x => {
+        if (x.appBarcode) return;
+        if (item.mfr_code && x.mfrCode && item.mfr_code.toLowerCase() === x.mfrCode.toLowerCase()) { best = x; bestScore = 1; return; }
+        const score = wordOverlapScore(item.name, x.description);
+        if (score > bestScore) { bestScore = score; best = x; }
+      });
+      if (best && bestScore >= 0.6) needsConfirmation.push({ item, excelRow: best, score: bestScore, confirmed: bestScore === 1 });
+      else newRowsForExcel.push({ item });
     });
 
-    // Excel rows nobody's claimed yet — either as an existing barcode link,
-    // or as a candidate match above — are genuinely new products that only
-    // exist in Excel so far. These were previously falling through the
-    // cracks entirely; now they get added to the app.
-    const claimedRowIndexes = new Set();
-    excelRows.forEach(er => { if (er.appBarcode) claimedRowIndexes.add(er.rowIndex); });
-    needsConfirmation.forEach(nc => claimedRowIndexes.add(nc.excelRow.rowIndex));
-    const newFromExcel = excelRows.filter(er => !claimedRowIndexes.has(er.rowIndex)).map(er => ({ ...er, include: true }));
+    // Excel rows with no barcode that nobody above is claiming = products that
+    // only exist in Excel so far. They get a barcode and an app record.
+    const claimed = new Set(needsConfirmation.map(nc => nc.excelRow.rowIndex));
+    const newFromExcel = excelRows.filter(x => !x.appBarcode && !claimed.has(x.rowIndex)).map(x => ({ ...x, include: true }));
 
-    odSyncData = { token, cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel, nextRowIndex: grid.length };
-    await odCloseSession(token, sessionId);
+    odSyncData = { grid, headerRaw, cols, sheetName: found.name, toApplyToApp, conflicts, needsConfirmation, newFromExcel, newRowsForExcel, kept, nextRowIndex: grid.length };
     return true;
   } catch (e) {
     if (token) await odCloseSession(token, sessionId).catch(() => {});
@@ -5230,33 +5257,55 @@ async function syncOneDriveNow() {
   document.getElementById('odSyncReviewModal').classList.add('open');
 }
 
-// Runs quietly at key moments (before an order form, before/after adding an
-// item). Skips entirely if OneDrive isn't connected, and only surfaces the
-// review modal if there's actually something worth a look — otherwise it's
-// invisible, so it never gets in the way of what the person is trying to do.
+// Runs quietly at key moments. Only surfaces the review modal if there's
+// actually something worth a look.
 async function autoSyncOneDrive(reasonLabel) {
   if (!odConfig || !odConfig.clientId) return;
   const ok = await computeOneDriveSyncData(true);
   if (!ok) return;
-  const { toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
-  if (toApplyToApp.length || toApplyToExcel.length || needsConfirmation.length || newFromExcel.length) {
+  const d = odSyncData;
+  const visible = d.toApplyToApp.filter(u => !u.silent).length + d.conflicts.length + d.needsConfirmation.length + d.newFromExcel.length + d.newRowsForExcel.length;
+  if (visible) {
     renderOneDriveSyncReview();
     document.getElementById('odSyncReviewModal').classList.add('open');
     toast(`Auto-sync (${reasonLabel}) found changes to review`, 'success');
   }
 }
 
+const OD_FIELD_LABELS = { category:'Category', brand:'Brand', range:'Range', type:'Type', mainConnectionType:'Main connection', attrA:'Size A', connectionTypeB:'Connection B', attrB:'Size B', connectionTypeC:'Connection C', attrC:'Size C', colour:'Colour', material:'Material', mfr_code:'Mfr code', name:'Name', suppliers:'Supplier codes/prices' };
+
 function renderOneDriveSyncReview() {
   document.getElementById('odApplyProgress').style.display = 'none';
   const btn = document.getElementById('odApplySyncBtn');
   if (btn) { btn.disabled = false; btn.textContent = '✓ Apply Sync'; }
-  const { toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
+  const { toApplyToApp, conflicts, needsConfirmation, newFromExcel, newRowsForExcel, sheetName } = odSyncData;
+  const updates = toApplyToApp.filter(u => !u.silent);
+  const esc = v => String(v ?? '').replace(/</g, '&lt;');
   document.getElementById('odReviewSummary').innerHTML = `
-    <span style="background:#0f1e30;color:#6b8fad;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${toApplyToApp.length} update${toApplyToApp.length !== 1 ? 's' : ''} from Excel</span>
-    <span style="background:#0f1e30;color:#6b8fad;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${toApplyToExcel.length} to send to Excel</span>
+    <span style="background:#0f1e30;color:#6b8fad;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${updates.length} update${updates.length !== 1 ? 's' : ''} from Excel</span>
     ${newFromExcel.length ? `<span style="background:#0f2e1a;color:#4cdf8a;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">🆕 ${newFromExcel.length} new from Excel</span>` : ''}
+    ${newRowsForExcel.length ? `<span style="background:#0f1e30;color:#8ab4d8;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">➕ ${newRowsForExcel.length} new row${newRowsForExcel.length !== 1 ? 's' : ''} for Excel</span>` : ''}
     ${needsConfirmation.length ? `<span style="background:#2e2410;color:#f0a020;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">⚠ ${needsConfirmation.length} need confirming</span>` : ''}
+    ${conflicts.length ? `<span style="background:#3a0808;color:#ff6b6b;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">⚠ ${conflicts.length} conflict${conflicts.length !== 1 ? 's' : ''}</span>` : ''}
+    <span style="background:#0f1e30;color:#4a6880;padding:4px 10px;border-radius:8px;font-size:11px">tab "${esc(sheetName)}"</span>
   `;
+
+  const diffLine = (u) => u.changed.map(k => k === 'suppliers' ? 'Supplier codes/prices' : `${OD_FIELD_LABELS[k] || k}: <span style="color:#4a6880">${esc(u.item[k]) || '(blank)'}</span> → ${esc(u.data[k]) || '(blank)'}`).join(' · ');
+
+  const confl = document.getElementById('odConflictSection');
+  if (conflicts.length) {
+    confl.style.display = 'block';
+    document.getElementById('odConflictRows').innerHTML = conflicts.map((c, i) => `
+      <div style="background:#0f1e30;border:1px solid #7f1d1d;border-radius:7px;padding:9px 11px;margin-bottom:7px">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+          <input type="checkbox" checked onchange="odSyncData.conflicts[${i}].takeExcel=this.checked">
+          <div>
+            <div style="font-size:12px;color:#e8edf2"><strong>${esc(c.item.name)}</strong></div>
+            <div style="font-size:10px;color:#8ab4d8;margin-top:3px">${diffLine(c)}</div>
+          </div>
+        </label>
+      </div>`).join('');
+  } else confl.style.display = 'none';
 
   const newSection = document.getElementById('odNewFromExcelSection');
   if (newFromExcel.length) {
@@ -5266,8 +5315,8 @@ function renderOneDriveSyncReview() {
         <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
           <input type="checkbox" checked onchange="odSyncData.newFromExcel[${i}].include=this.checked">
           <div>
-            <div style="font-size:12px;color:#e8edf2">${er.description}</div>
-            <div style="font-size:10px;color:#4a6880;margin-top:2px">${er.category || 'Uncategorised'}${er.mfrCode ? ' · Mfr: ' + er.mfrCode : ''}</div>
+            <div style="font-size:12px;color:#e8edf2">${esc(er.description)}</div>
+            <div style="font-size:10px;color:#4a6880;margin-top:2px">${esc(er.category) || 'Uncategorised'}${er.mfrCode ? ' · Mfr: ' + esc(er.mfrCode) : ''} · Excel row ${er.rowIndex + 1 + (odSyncData.grid.rowOffset || 0)}</div>
           </div>
         </label>
       </div>`).join('');
@@ -5279,22 +5328,22 @@ function renderOneDriveSyncReview() {
     document.getElementById('odNeedsConfirmRows').innerHTML = needsConfirmation.map((nc, i) => `
       <div style="background:#0f1e30;border:1px solid #3a2e10;border-radius:7px;padding:9px 11px;margin-bottom:7px">
         <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
-          <input type="checkbox" checked onchange="odSyncData.needsConfirmation[${i}].confirmed=this.checked">
+          <input type="checkbox" ${nc.confirmed ? 'checked' : ''} onchange="odSyncData.needsConfirmation[${i}].confirmed=this.checked">
           <div>
-            <div style="font-size:12px;color:#e8edf2"><strong>${nc.item.name}</strong> (app) ↔ <strong>${nc.excelRow.description}</strong> (excel)</div>
-            <div style="font-size:10px;color:#4a6880;margin-top:2px">Match confidence: ${Math.round(nc.score * 100)}% — uncheck if these are actually different products</div>
+            <div style="font-size:12px;color:#e8edf2"><strong>${esc(nc.item.name)}</strong> (app) ↔ <strong>${esc(nc.excelRow.description)}</strong> (Excel)</div>
+            <div style="font-size:10px;color:#4a6880;margin-top:2px">${nc.score === 1 ? 'Same manufacturer code' : `Match confidence: ${Math.round(nc.score * 100)}%`} — ticked: the app's barcode goes into that Excel row's empty barcode cell and Excel's details flow into the app. Unticked: a new row is added to Excel instead.</div>
           </div>
         </label>
       </div>`).join('');
   } else confSection.style.display = 'none';
 
-  document.getElementById('odToAppRows').innerHTML = toApplyToApp.length
-    ? toApplyToApp.map(r => `<div style="font-size:11px;color:#e8edf2;padding:5px 0;border-bottom:1px solid #1e3248">${r.item.name} — pricing/codes updated from Excel</div>`).join('')
+  document.getElementById('odToAppRows').innerHTML = updates.length
+    ? updates.map(u => `<div style="font-size:11px;color:#e8edf2;padding:5px 0;border-bottom:1px solid #1e3248">${esc(u.item.name)}<div style="font-size:10px;color:#8ab4d8;margin-top:2px">${diffLine(u)}</div></div>`).join('')
     : '<div style="color:#4a6880;font-size:11px;text-align:center;padding:8px">Nothing to update from Excel</div>';
 
-  document.getElementById('odToExcelRows').innerHTML = toApplyToExcel.length
-    ? toApplyToExcel.map(r => `<div style="font-size:11px;color:#e8edf2;padding:5px 0;border-bottom:1px solid #1e3248">${r.item.name}${r.isNew ? ' — new row' : ' — update existing row'}</div>`).join('')
-    : '<div style="color:#4a6880;font-size:11px;text-align:center;padding:8px">Nothing to send to Excel</div>';
+  document.getElementById('odToExcelRows').innerHTML = newRowsForExcel.length
+    ? newRowsForExcel.map(r => `<div style="font-size:11px;color:#e8edf2;padding:5px 0;border-bottom:1px solid #1e3248">${esc(r.item.name)} <span style="color:#4a6880">— ${esc(r.item.category) || 'no category'}${r.item.barcode ? ' · ' + esc(r.item.barcode) : ' · no barcode yet, one will be created'}</span></div>`).join('')
+    : '<div style="color:#4a6880;font-size:11px;text-align:center;padding:8px">Nothing to add to Excel</div>';
 }
 
 async function applyOneDriveSync() {
@@ -5305,70 +5354,82 @@ async function applyOneDriveSync() {
   progressEl.style.display = 'block'; progressEl.textContent = 'Starting sync...';
   setSync('busy');
   let sessionId = null, token = null;
+  const counts = { toApp: 0, newFromExcel: 0, linked: 0, newRows: 0 };
   try {
-    const { cols, totalCols, toApplyToApp, toApplyToExcel, needsConfirmation, newFromExcel } = odSyncData;
-    const totalSteps = toApplyToApp.length + newFromExcel.filter(e=>e.include).length + needsConfirmation.filter(n=>n.confirmed).length + toApplyToExcel.length;
+    const { headerRaw, cols, toApplyToApp, conflicts, needsConfirmation, newFromExcel, newRowsForExcel } = odSyncData;
+    const totalSteps = toApplyToApp.length + conflicts.filter(c => c.takeExcel).length + newFromExcel.filter(e => e.include).length + needsConfirmation.length + newRowsForExcel.length;
     let step = 0;
     const setProgress = (label) => { progressEl.textContent = `${label} (${step}/${totalSteps})`; };
 
-    token = await getGraphToken(); // fresh token — the one from the initial check may have gone stale while reviewing
+    token = await getGraphToken();
     progressEl.textContent = 'Connected — opening Excel session...';
-    sessionId = await odCreateSession(token); // one shared session for every write below, instead of one per request
+    sessionId = await odCreateSession(token);
 
-    // Excel → App updates (barcode-matched, excel side changed)
-    for (const { item, excelRow } of toApplyToApp) {
-      step++; setProgress(`Updating ${item.name} from Excel`);
-      const newSuppliers = {};
-      Object.entries(excelRow.supplierData).forEach(([s, d]) => { newSuppliers[s] = { code: d.code, price: d.price, min_order: item.suppliers?.[s]?.min_order || '' }; });
-      await db.collection('items').doc(item.id).update({ suppliers: newSuppliers, syncedToMaster: true });
+    // Guard against the sheet having changed since the check: re-read it and
+    // refuse to write a barcode into a cell that is no longer empty.
+    const fresh = await odReadWorksheetNamed(token, sessionId, odSyncData.sheetName);
+    const barcodeCellNow = (rowIndex) => String((fresh[rowIndex] || [])[cols.appBarcode] ?? '').trim();
+    const bcCol = odAbs(fresh, 0, cols.appBarcode).col;
+
+    // 1. Excel → app (barcode-matched). Firestore only; no Excel writes.
+    const appUpdates = [...toApplyToApp, ...conflicts.filter(c => c.takeExcel)];
+    for (let i = 0; i < appUpdates.length; i += 400) {
+      const batch = db.batch();
+      appUpdates.slice(i, i + 400).forEach(u => batch.update(db.collection('items').doc(u.item.id), u.data));
+      step += Math.min(400, appUpdates.length - i); setProgress('Updating app items from Excel');
+      await batch.commit();
     }
+    counts.toApp = appUpdates.length;
 
-    // Brand new products found only in Excel — write the barcode to Excel
-    // FIRST, then create the app item. If the Excel write fails partway
-    // through the sync, nothing gets created in the app in a half-linked
-    // state — it'll just show up again cleanly on the next sync attempt.
+    // 2. Products that only exist in Excel: barcode into the EMPTY cell first,
+    //    then the app record — so a failed write never leaves a half-link.
     for (const er of newFromExcel) {
       if (!er.include) continue;
       step++; setProgress(`Adding ${er.description} to the app`);
+      const existing = barcodeCellNow(er.rowIndex);
+      if (existing) { console.warn('Skipped: barcode cell filled since the check', er.description, existing); continue; }
       const barcode = generateBarcodeValue();
-      await odWriteCell(token, er.rowIndex, cols.appBarcode, barcode, sessionId);
-      const suppliers = {};
-      Object.entries(er.supplierData).forEach(([s, d]) => { suppliers[s] = { code: d.code, price: d.price, min_order: '' }; });
-      await db.collection('items').add({
-        name: er.description, category: er.category || 'Uncategorised', mfr_code: er.mfrCode || '',
-        barcode, locations: {}, min_qty: 0, notes: 'Added from OneDrive sync', suppliers,
-        syncedToMaster: true, createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+      const abs = odAbs(fresh, er.rowIndex, cols.appBarcode);
+      await odWriteCell(token, abs.row, abs.col, barcode, sessionId);
+      const { data } = odItemDataFromExcelRow({ suppliers: {} }, er);
+      await db.collection('items').add({ ...data, barcode, locations: {}, min_qty: 0, notes: 'Added from OneDrive sync', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      counts.newFromExcel++;
     }
 
-    // Confirmed name-matches: link via barcode, then treat as App → Excel (app is authoritative for a first link)
-    let nextRow = odSyncData.nextRowIndex;
+    // 3. Confirmed name/code matches: app barcode into the EMPTY cell, then
+    //    Excel's details flow into the app like any other matched item.
     for (const nc of needsConfirmation) {
-      if (!nc.confirmed) continue;
       step++; setProgress(`Linking ${nc.item.name}`);
-      await odWriteCell(token, nc.excelRow.rowIndex, cols.appBarcode, nc.item.barcode || '', sessionId);
-      toApplyToExcel.push({ item: nc.item, rowIndex: nc.excelRow.rowIndex, isNew: false });
-    }
-    // Rejected matches (or excel already taken) fall back to being genuinely new rows
-    for (const nc of needsConfirmation) {
-      if (nc.confirmed) continue;
-      toApplyToExcel.push({ item: nc.item, rowIndex: null, isNew: true });
+      if (!nc.confirmed) { newRowsForExcel.push({ item: nc.item }); continue; }
+      const existing = barcodeCellNow(nc.excelRow.rowIndex);
+      if (existing && existing !== nc.item.barcode) { console.warn('Skipped link: barcode cell filled since the check', nc.item.name, existing); newRowsForExcel.push({ item: nc.item }); continue; }
+      let barcode = nc.item.barcode;
+      if (!barcode) { barcode = generateBarcodeValue(); await db.collection('items').doc(nc.item.id).update({ barcode }); }
+      if (!existing) { const abs = odAbs(fresh, nc.excelRow.rowIndex, cols.appBarcode); await odWriteCell(token, abs.row, abs.col, barcode, sessionId); }
+      const { data } = odItemDataFromExcelRow(nc.item, nc.excelRow);
+      await db.collection('items').doc(nc.item.id).update(data);
+      counts.linked++;
     }
 
-    // App → Excel updates/new rows
-    for (const r of toApplyToExcel) {
-      step++; setProgress(`Sending ${r.item.name} to Excel`);
-      const rowData = { category: r.item.category, description: r.item.name, mfrCode: r.item.mfr_code, appBarcode: r.item.barcode, supplierData: r.item.suppliers || {} };
-      const values = odRowToValues(rowData, totalCols, cols);
-      if (r.isNew) { await odAppendRow(token, values, nextRow, sessionId); nextRow++; }
-      else await odWriteRow(token, r.rowIndex, values, sessionId);
+    // 4. Items created in the app with no Excel row: one new row each, below
+    //    the last used row. Only ever writes into blank cells.
+    let nextRow = fresh.length; // grid-relative index of the first blank row
+    for (const r of newRowsForExcel) {
+      step++; setProgress(`Adding ${r.item.name} to Excel`);
+      let barcode = r.item.barcode;
+      if (!barcode) { barcode = generateBarcodeValue(); await db.collection('items').doc(r.item.id).update({ barcode }); }
+      const values = odRowValuesFromItem({ ...r.item, barcode }, headerRaw, cols);
+      const abs = odAbs(fresh, nextRow, 0);
+      await odWriteNewRow(token, abs.row, abs.col, values, sessionId);
+      nextRow++;
       await db.collection('items').doc(r.item.id).update({ syncedToMaster: true });
+      counts.newRows++;
     }
 
     progressEl.textContent = 'Finishing up...';
     await db.collection('config').doc('onedrive').update({ lastSyncAt: Date.now() });
     odConfig.lastSyncAt = Date.now();
-    await logAction('edit', 'OneDrive sync completed', `${currentUser?.name || 'Someone'} synced ${toApplyToApp.length} update(s) from Excel, added ${newFromExcel.filter(er=>er.include).length} new item(s) from Excel, and sent ${toApplyToExcel.length} item(s) to Excel.`);
+    await logAction('edit', 'OneDrive sync completed', `${currentUser?.name || 'Someone'} synced: ${counts.toApp} item(s) updated from Excel, ${counts.newFromExcel} new from Excel, ${counts.linked} linked by barcode, ${counts.newRows} new row(s) added to Excel.`);
     await odCloseSession(token, sessionId);
     setSync('ok');
     closeModal('odSyncReviewModal');
@@ -5380,11 +5441,10 @@ async function applyOneDriveSync() {
     if (token) await odCloseSession(token, sessionId).catch(() => {});
     setSync('err');
     toast('Sync failed while applying: ' + e.message, 'error');
-    progressEl.textContent = 'Failed: ' + e.message;
+    progressEl.textContent = `Failed: ${e.message} — done so far: ${counts.toApp} updated, ${counts.newFromExcel} added from Excel, ${counts.linked} linked, ${counts.newRows} rows added. Tap Sync Now again; nothing already done is repeated.`;
   }
   btn.disabled = false; btn.textContent = '✓ Apply Sync';
 }
-
 
 // ════════════════════════════════════════
 //  EXPORTS
