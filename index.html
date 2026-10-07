@@ -4896,9 +4896,23 @@ function odItemDataFromExcelRow(item, er) {
   const kept = { codes: 0, suppliers: 0 };
   const mfr_code = er.mfrCode || item.mfr_code || '';
   if (!er.mfrCode && item.mfr_code) kept.codes++;
+  // Supplier entries: Excel owns code + price. Everything else the app keeps
+  // on an entry (min order, cleaned display code, order-link URL, site) is
+  // preserved, and the display code / link are rebuilt the same way Edit
+  // Item builds them, so ordering links keep working.
+  const samePrice = (a, b) => (Number(a) || 0) === (Number(b) || 0);
+  const sameSup = (a, b) => String(a?.code || '').trim() === String(b?.code || '').trim() && samePrice(a?.price, b?.price);
   const suppliers = {};
+  let suppliersChanged = false;
   Object.entries(er.supplierData).forEach(([sn, d]) => {
-    suppliers[sn] = { code: d.code, price: d.price, min_order: item.suppliers?.[sn]?.min_order || '' };
+    const prev = (item.suppliers || {})[sn];
+    if (prev && sameSup(prev, d)) { suppliers[sn] = prev; return; }
+    suppliersChanged = true;
+    const cc = typeof cleanCode === 'function' ? cleanCode(d.code || '') : (d.code || '');
+    const base = (typeof SEARCH_URLS !== 'undefined' && SEARCH_URLS[sn]) || '';
+    suppliers[sn] = { ...(prev || {}), code: d.code || '', price: d.price, min_order: prev?.min_order || '',
+      code_display: cc, site: (typeof SUPPLIER_SITES !== 'undefined' && SUPPLIER_SITES[sn]) || prev?.site || '',
+      url: cc && base ? base + encodeURIComponent(cc) : '' };
   });
   Object.entries(item.suppliers || {}).forEach(([sn, d]) => { if (!suppliers[sn]) { suppliers[sn] = d; kept.suppliers++; } });
   const data = {
@@ -4909,8 +4923,20 @@ function odItemDataFromExcelRow(item, er) {
     colour: er.colour, material: er.material, mfr_code,
     name: er.description, suppliers, syncedToMaster: true
   };
-  const changed = Object.keys(data).filter(k => k === 'syncedToMaster' ? false : k === 'suppliers' ? JSON.stringify(item.suppliers || {}) !== JSON.stringify(suppliers) : (item[k] ?? '') !== (data[k] ?? ''));
-  return { data, changed, kept };
+  const changed = Object.keys(data).filter(k => k === 'syncedToMaster' ? false : k === 'suppliers' ? suppliersChanged : String(item[k] ?? '') !== String(data[k] ?? ''));
+  // Spell out exactly which supplier codes/prices change, for the review screen.
+  const supplierDiffs = [];
+  Object.entries(er.supplierData).forEach(([sn, d]) => {
+    const prev = (item.suppliers || {})[sn];
+    if (!prev) supplierDiffs.push(`${sn}: added (${d.code || 'no code'}${d.price != null ? ', £' + Number(d.price).toFixed(2) : ''})`);
+    else if (!sameSup(prev, d)) {
+      const bits = [];
+      if (String(prev.code || '').trim() !== String(d.code || '').trim()) bits.push(`code ${prev.code || '(blank)'} → ${d.code || '(blank)'}`);
+      if (!samePrice(prev.price, d.price)) bits.push(`£${(Number(prev.price) || 0).toFixed(2)} → £${(Number(d.price) || 0).toFixed(2)}`);
+      supplierDiffs.push(`${sn}: ${bits.join(', ')}`);
+    }
+  });
+  return { data, changed, kept, supplierDiffs };
 }
 
 async function disconnectOneDrive() {
@@ -5208,13 +5234,13 @@ async function computeOneDriveSyncData(quiet) {
     liveItems.forEach(item => {
       const er = item.barcode ? byBarcode[item.barcode] : null;
       if (er) {
-        const { data, changed, kept: k } = odItemDataFromExcelRow(item, er);
+        const { data, changed, kept: k, supplierDiffs } = odItemDataFromExcelRow(item, er);
         kept.codes += k.codes; kept.suppliers += k.suppliers;
-        if (!changed.length) { if (!item.syncedToMaster) toApplyToApp.push({ item, data, changed, silent: true }); return; }
+        if (!changed.length) { if (!item.syncedToMaster) toApplyToApp.push({ item, data, changed, supplierDiffs, silent: true }); return; }
         // Edited in the app since the last sync AND Excel differs: surface it
         // rather than silently letting either side win.
-        if (item.syncedToMaster === false) conflicts.push({ item, data, changed, takeExcel: true });
-        else toApplyToApp.push({ item, data, changed });
+        if (item.syncedToMaster === false) conflicts.push({ item, data, changed, supplierDiffs, takeExcel: true });
+        else toApplyToApp.push({ item, data, changed, supplierDiffs });
         return;
       }
       if (item.unregistered) return; // engineer's stub — waits until an admin completes it
@@ -5290,7 +5316,7 @@ function renderOneDriveSyncReview() {
     <span style="background:#0f1e30;color:#4a6880;padding:4px 10px;border-radius:8px;font-size:11px">tab "${esc(sheetName)}"</span>
   `;
 
-  const diffLine = (u) => u.changed.map(k => k === 'suppliers' ? 'Supplier codes/prices' : `${OD_FIELD_LABELS[k] || k}: <span style="color:#4a6880">${esc(u.item[k]) || '(blank)'}</span> → ${esc(u.data[k]) || '(blank)'}`).join(' · ');
+  const diffLine = (u) => u.changed.map(k => k === 'suppliers' ? esc((u.supplierDiffs || []).join(' · ') || 'Supplier codes/prices') : `${OD_FIELD_LABELS[k] || k}: <span style="color:#4a6880">${esc(u.item[k]) || '(blank)'}</span> → ${esc(u.data[k]) || '(blank)'}`).join(' · ');
 
   const confl = document.getElementById('odConflictSection');
   if (conflicts.length) {
