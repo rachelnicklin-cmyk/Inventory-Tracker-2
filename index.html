@@ -4118,7 +4118,7 @@ function stSheetLocations() { return currentStockTakeLocation ? [currentStockTak
 function downloadStockTakeSheet() {
   const locs = stSheetLocations();
   const list = stScopedItems().filter(i => !i.isTestData || currentUser?.isTester)
-    .sort((a, b) => (a.category||'').localeCompare(b.category||'') || (a.name||'').localeCompare(b.name||'', 'en', { numeric: true }));
+    .sort((a, b) => (a.name||'').localeCompare(b.name||'')); // same order as the on-screen stock take list
   const header = ['Barcode', 'Category', 'Item'];
   locs.forEach(l => header.push('App says: ' + l, ST_COUNT_PREFIX + l));
   const rows = [header];
