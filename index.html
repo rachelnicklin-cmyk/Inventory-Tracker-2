@@ -1415,6 +1415,18 @@ td{padding:8px 9px;vertical-align:middle}
 </div>
 
 <!-- Stock Take -->
+<div class="overlay" id="stSheetReviewModal" style="z-index:1200">
+  <div class="modal lg">
+    <h2>⬆ Count sheet — check before applying</h2>
+    <div id="stSheetReviewBody" style="max-height:60vh;overflow-y:auto"></div>
+    <div id="stSheetProgress" style="display:none;font-size:11px;color:#8ab4d8;margin-top:8px"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('stSheetReviewModal')">Cancel</button>
+      <button class="btn btn-primary" id="stSheetApplyBtn" onclick="applyStockTakeSheet()">✓ Apply These Counts</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="stockTakeModal">
   <div class="modal lg">
     <h2 id="stockTakeModalTitle">📋 Stock Take — <span id="stockTakeModalMonth"></span></h2>
@@ -1422,6 +1434,12 @@ td{padding:8px 9px;vertical-align:middle}
       <div class="search-box" style="flex:1;min-width:130px"><span style="color:#4a6880;font-size:13px">🔍</span><input type="text" id="stocktake-search" placeholder="Search items..." oninput="renderStockTakeList()"></div>
       <button class="btn btn-outline" id="stScanBtn" style="padding:6px 12px;font-size:12px;flex-shrink:0" onclick="toggleStockTakeScanner()">📷 Scan</button>
       <span style="font-size:12px;color:#6b8fad;white-space:nowrap" id="stockTakeProgress"></span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;background:#0f1e30;border:1px solid #1e3248;border-radius:7px;padding:8px 10px">
+      <span style="font-size:11px;color:#6b8fad;flex:1;min-width:150px">Counting on paper or a laptop? Use a count sheet instead of typing each one here.</span>
+      <button class="btn btn-outline" style="padding:6px 11px;font-size:12px" onclick="downloadStockTakeSheet()">⬇ Download count sheet</button>
+      <button class="btn btn-primary" style="padding:6px 11px;font-size:12px" onclick="document.getElementById('stSheetFile').click()">⬆ Upload filled-in sheet</button>
+      <input type="file" id="stSheetFile" accept=".xlsx,.xlsm,.xls,.csv" style="display:none" onchange="openStockTakeSheetUpload(this.files[0]); this.value=''">
     </div>
     <div id="stNotListedBox" style="display:none;margin-bottom:12px;position:relative">
       <input type="text" id="stNotListedSearch" placeholder="Found something not in this list? Search to add it..." autocomplete="off"
@@ -1603,7 +1621,9 @@ const ALL_SUPPLIERS  = ["Direct Plumbing", "Floor Heating WH", "B.E.E", "Pirate 
 let LOCATIONS = ["Yard", "Luke's Van", "Josh's Van"]; // overridden by Firestore 'meta/locations' doc if present
 
 const DEFAULT_USERS = [
-  {id:'user_rachel', name:'Rachel', role:'admin',    pin:'1234', color:'#3a7bd5', initials:'RC'},
+  // First-run seed only (used when the users list is empty). Real users and
+  // PINs are managed in Admin > Users and live in Firestore, not here.
+  {id:'user_laura',  name:'Laura',  role:'admin',    pin:'0000', color:'#3a7bd5', initials:'LA'},
   {id:'user_dan',    name:'Dan',    role:'admin',    pin:'4444', color:'#a855f7', initials:'DN'},
   {id:'user_luke',   name:'Luke',   role:'engineer', pin:'2222', color:'#22c55e', initials:'LK'},
   {id:'user_josh',   name:'Josh',   role:'engineer', pin:'3333', color:'#f59e0b', initials:'JS'},
@@ -1957,15 +1977,40 @@ function supPills(item) {
   if (keys.length > 2) h += `<span class="more-sup" onclick="showSuppliers('${item.id}')">+${keys.length-2}</span>`;
   h += '</div>'; return h;
 }
+// ════════════════════════════════════════
+//  SEARCH: every word typed must appear somewhere on the item, in any order.
+//  "22mm m-press elbow" finds "90 Deg Elbow 22mm M-Press". Sizes match with
+//  or without "mm", hyphens are ignored, and "degree" matches "Deg".
+// ════════════════════════════════════════
+function searchNorm(t) {
+  return String(t ?? '').toLowerCase()
+    .replace(/(\d)\s*mm\b/g, '$1')        // 22mm / 22 mm -> 22
+    .replace(/\bdegrees?\b/g, 'deg')
+    .replace(/[-–—_/]/g, ' ')              // m-press -> m press
+    .replace(/\s+/g, ' ').trim();
+}
+function itemSearchText(it, full) {
+  const parts = [it.name, it.category, it.brand, it.range, it.type, it.mainConnectionType, it.connectionTypeB, it.connectionTypeC,
+    it.attrA, it.attrB, it.attrC, it.colour, it.material, it.barcode, it.notes];
+  if (full) {
+    parts.push(it.mfr_code);
+    Object.entries(it.suppliers || {}).forEach(([n, d]) => parts.push(n, d && d.code));
+  }
+  return ' ' + searchNorm(parts.filter(Boolean).join(' ')).replace(/(\d)\s*x\s*(?=\d)/g, '$1 x ') + ' ';
+}
+function itemMatchesSearch(it, q, full) {
+  const words = searchNorm(q).replace(/(\d)\s*x\s*(?=\d)/g, '$1 ').split(' ').filter(w => w && w !== 'x');
+  if (!words.length) return true;
+  const text = itemSearchText(it, full), compact = text.replace(/\s/g, '');
+  return words.every(w => text.includes(w) || compact.includes(w) || (w.length > 3 && w.endsWith('s') && text.includes(w.slice(0, -1))));
+}
+
 function getFiltered() {
   const q=(document.getElementById('search')?.value||'').toLowerCase();
   const cat=document.getElementById('catFilter')?.value||'';
   const st=document.getElementById('statusFilter')?.value||'';
   let list = items.filter(i => {
-    const mq = !q || (i.name||'').toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q) ||
-      (i.mfr_code||'').toLowerCase().includes(q) || (i.notes||'').toLowerCase().includes(q) ||
-      Object.keys(i.suppliers||{}).some(s => s.toLowerCase().includes(q)) ||
-      Object.values(i.suppliers||{}).some(s => (s.code||'').toLowerCase().includes(q));
+    const mq = !q || itemMatchesSearch(i, q, true);
     return mq && (!cat || i.category===cat) && (!st || (st === 'nobarcode' ? !i.barcode : iStatus(i)===st));
   });
   list.sort((a,b) => {
@@ -3281,10 +3326,14 @@ async function renderMyActions() {
   if (!currentUser) return;
   el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:10px 0">Loading...</div>';
   try {
+    // Fetch this person's actions and sort newest-first in the browser, so the
+    // query doesn't need a Firestore composite index.
     const snap = await db.collection('myActions')
-      .where('performedBy','==',currentUser.name)
-      .orderBy('ts','desc').limit(10).get();
-    myActionsCache = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(a => (!!currentUser?.isTester) === (!!a.isTestData));
+      .where('performedBy','==',currentUser.name).get();
+    const tsOf = a => a.ts?.toMillis ? a.ts.toMillis() : (a.ts?.seconds ? a.ts.seconds * 1000 : 0);
+    myActionsCache = snap.docs.map(d => ({id:d.id, ...d.data()}))
+      .filter(a => (!!currentUser?.isTester) === (!!a.isTestData))
+      .sort((a, b) => tsOf(b) - tsOf(a)).slice(0, 10);
     if (!myActionsCache.length) {
       el.innerHTML = '<div style="color:#4a6880;font-size:12px;text-align:center;padding:10px 0">No recent actions to correct.</div>';
       return;
@@ -3832,6 +3881,7 @@ function resetStockTakeScannerBox() {
 }
 
 function closeStockTakeModal() {
+  flushStockTakeDrafts();
   stopStockTakeScanner();
   // Restore scanner box to default state
   const box = document.getElementById('stScannerBox');
@@ -3845,13 +3895,14 @@ function closeStockTakeModal() {
 
 function chooseStockTakeLocation() {
   const btnsEl = document.getElementById('stLocationChooseButtons');
-  btnsEl.innerHTML = LOCATIONS.map(loc => `<button class="btn btn-primary" style="padding:10px;font-size:13px;text-align:left" onclick="closeModal('stLocationChooseModal');openStockTake('${loc}')">📍 ${loc}</button>`).join('')
+  btnsEl.innerHTML = LOCATIONS.map(loc => `<button class="btn btn-primary" style="padding:10px;font-size:13px;text-align:left" data-loc="${loc.replace(/"/g,'&quot;')}" onclick="closeModal('stLocationChooseModal');openStockTake(this.dataset.loc)">📍 ${loc}</button>`).join('')
     + `<button class="btn btn-outline" style="padding:10px;font-size:13px;text-align:left" onclick="closeModal('stLocationChooseModal');openStockTake(null)">🌍 All Locations (whole business)</button>`;
   document.getElementById('stLocationChooseModal').classList.add('open');
 }
 
 async function openStockTake(location) {
   currentStockTakeLocation = location || null;
+  stockTakeDraft = {};
   document.getElementById('stockTakeModalMonth').textContent = fmtDate(new Date());
   document.getElementById('stocktake-search').value = '';
   const titleEl = document.getElementById('stockTakeModalTitle');
@@ -3862,7 +3913,7 @@ async function openStockTake(location) {
       // Only admins can kick off a brand new stock take cycle — anyone can still
       // continue one that's already running (started by an admin earlier).
       if (currentUser?.role !== 'admin') {
-        toast('Only Rachel or Dan can start a new stock take — ask them to kick this one off, then anyone can continue it', 'error');
+        toast('Only an admin can start a new stock take — ask Laura or Dan to kick this one off, then anyone can continue it', 'error');
         return;
       }
       const ref = await db.collection('stocktakes').add({
@@ -3911,10 +3962,8 @@ async function loadPreviousStockTakeQtys(location) {
 
 function renderStockTakeList() {
   const q = (document.getElementById('stocktake-search').value||'').toLowerCase();
-  const scoped = currentStockTakeLocation
-    ? items.filter(i => (getLocations(i)[currentStockTakeLocation]||0) > 0 || stockTakeChecked[i.id] || stockTakeExtra[i.id])
-    : items;
-  const filtered = scoped.filter(i => !q || (i.name||'').toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q));
+  const scoped = stScopedItems();
+  const filtered = scoped.filter(i => !q || itemMatchesSearch(i, q));
   const sorted = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
   const checkedCount = scoped.filter(i => stockTakeChecked[i.id]).length;
   const pct = scoped.length ? Math.round((checkedCount/scoped.length)*100) : 0;
@@ -3930,14 +3979,14 @@ function renderStockTakeList() {
     const locInputs = currentStockTakeLocation
       ? `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
           <span style="font-size:8px;color:#4a6880;white-space:nowrap">${currentStockTakeLocation}</span>
-          <input class="st-qty-input" type="number" min="0" value="${locs[currentStockTakeLocation]||0}" inputmode="numeric" style="width:54px"
-            data-item="${item.id}" data-loc="${currentStockTakeLocation}" onchange="updateStockTakeQty('${item.id}','${currentStockTakeLocation}', this.value)">
+          <input class="st-qty-input" type="number" min="0" value="${stQtyShown(item.id, currentStockTakeLocation, locs)}" inputmode="numeric" style="width:54px"
+            data-item="${item.id}" data-loc="${currentStockTakeLocation.replace(/"/g,'&quot;')}" oninput="stQtyDraft(this)" onchange="stQtyCommit(this)">
         </div>`
       : LOCATIONS.map(loc => `
         <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
           <span style="font-size:8px;color:#4a6880;white-space:nowrap">${loc}</span>
-          <input class="st-qty-input" type="number" min="0" value="${locs[loc]||0}" inputmode="numeric" style="width:44px"
-            data-item="${item.id}" data-loc="${loc}" onchange="updateStockTakeQty('${item.id}','${loc}', this.value)">
+          <input class="st-qty-input" type="number" min="0" value="${stQtyShown(item.id, loc, locs)}" inputmode="numeric" style="width:44px"
+            data-item="${item.id}" data-loc="${loc.replace(/"/g,'&quot;')}" oninput="stQtyDraft(this)" onchange="stQtyCommit(this)">
         </div>`).join('');
     return `<div class="st-row${isChecked?' checked':''}" id="st-row-${item.id}">
       <div class="st-check${isChecked?' done':''}" onclick="toggleStockTakeCheck('${item.id}')">${isChecked?'✓':''}</div>
@@ -3955,7 +4004,7 @@ function onStNotListedInput(query) {
   const q = query.trim().toLowerCase();
   if (!q) { resultsEl.style.display = 'none'; return; }
   const alreadyShown = new Set(items.filter(i => (getLocations(i)[currentStockTakeLocation]||0) > 0 || stockTakeChecked[i.id] || stockTakeExtra[i.id]).map(i=>i.id));
-  const matches = items.filter(it => it.name.toLowerCase().includes(q) && !alreadyShown.has(it.id)).slice(0, 8);
+  const matches = items.filter(it => itemMatchesSearch(it, q) && !alreadyShown.has(it.id)).slice(0, 8);
   resultsEl.innerHTML = matches.length
     ? matches.map(it => `<div onmousedown="addStNotListedItem('${it.id}')" style="padding:8px 10px;cursor:pointer;font-size:12px;color:#e8edf2;border-bottom:1px solid #0f1e30" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('')
     : '<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches, or it\'s already in the list below</div>';
@@ -3971,34 +4020,274 @@ function addStNotListedItem(itemId) {
   toast('Added to the list below — enter the quantity you found', 'success');
 }
 
+// Numbers typed into a count box but not yet saved. The list is rebuilt when
+// you search, scan or add an item; drafts make sure a rebuild never throws
+// away what someone has typed. Key = itemId + '|' + location.
+let stockTakeDraft = {};
+const stDraftKey = (itemId, loc) => itemId + '|' + loc;
+function stQtyShown(itemId, loc, locs) {
+  const d = stockTakeDraft[stDraftKey(itemId, loc)];
+  return d !== undefined ? d : (locs[loc] || 0);
+}
+function stQtyDraft(inp) { stockTakeDraft[stDraftKey(inp.dataset.item, inp.dataset.loc)] = inp.value; }
+function stQtyCommit(inp) { return updateStockTakeQty(inp.dataset.item, inp.dataset.loc, inp.value); }
+
+function stScopedItems() {
+  return currentStockTakeLocation
+    ? items.filter(i => (getLocations(i)[currentStockTakeLocation]||0) !== 0 || stockTakeChecked[i.id] || stockTakeExtra[i.id])
+    : items;
+}
+// Updates one row and the progress bar in place — no list rebuild, so other
+// boxes being typed in are left alone and the keyboard stays where it is.
+function stRefreshRow(itemId) {
+  const scoped = stScopedItems();
+  const checkedCount = scoped.filter(i => stockTakeChecked[i.id]).length;
+  const pct = scoped.length ? Math.round((checkedCount/scoped.length)*100) : 0;
+  document.getElementById('stockTakeProgress').textContent = `${checkedCount} / ${scoped.length} checked (${pct}%)`;
+  document.getElementById('stockTakeProgressBar').style.width = pct + '%';
+  const row = document.getElementById('st-row-' + itemId);
+  if (!row) return;
+  const isChecked = !!stockTakeChecked[itemId];
+  row.classList.toggle('checked', isChecked);
+  const chk = row.querySelector('.st-check');
+  if (chk) { chk.classList.toggle('done', isChecked); chk.textContent = isChecked ? '✓' : ''; }
+  const item = items.find(i => i.id === itemId);
+  const tot = row.querySelector('.st-qty-old');
+  if (item && tot) tot.textContent = 'total ' + totalQty(item);
+}
+
 function toggleStockTakeCheck(itemId) {
   stockTakeChecked[itemId] = !stockTakeChecked[itemId];
   saveStockTakeProgress();
-  renderStockTakeList();
+  stRefreshRow(itemId);
 }
 
 async function updateStockTakeQty(itemId, loc, val) {
   const item = items.find(i => i.id === itemId); if (!item) return;
+  const key = stDraftKey(itemId, loc);
   const newVal = Math.max(0, parseInt(val)||0);
   const locs = getLocations(item);
   const oldVal = locs[loc]||0;
   const newLocs = {...locs, [loc]: newVal};
   if (newVal === oldVal) {
+    delete stockTakeDraft[key];
     stockTakeChecked[itemId] = true;
     saveStockTakeProgress();
-    renderStockTakeList();
+    stRefreshRow(itemId);
     return;
   }
   setSync('busy');
   try {
     await db.collection('items').doc(itemId).update(locationsUpdatePayload(newLocs));
+    // Reflect the save locally straight away so a second box on the same item
+    // (All Locations view) builds on this figure rather than the old one.
+    if (currentUser?.isTester) item.testLocations = newLocs; else item.locations = newLocs;
+    if (stockTakeDraft[key] === undefined || (parseInt(stockTakeDraft[key])||0) === newVal) delete stockTakeDraft[key];
     await logAction('qty', `Stock take update: ${item.name}`, `${currentUser.name} corrected ${loc} from ${oldVal} to ${newVal} during stock take`);
     stockTakeChecked[itemId] = true;
     saveStockTakeProgress();
     setSync('ok');
-    renderStockTakeList();
+    stRefreshRow(itemId);
     toast(`${item.name} (${loc}): ${oldVal} → ${newVal}`, 'success');
-  } catch(e) { setSync('err'); toast('Save failed: '+e.message, 'error'); }
+  } catch(e) { setSync('err'); toast('Save failed: '+e.message+' — your number is kept in the box, try again', 'error'); }
+}
+
+// Saves any number that was typed but never committed (e.g. typed, then
+// Complete or Close tapped straight away). Returns how many failed.
+async function flushStockTakeDrafts() {
+  let failed = 0;
+  for (const key of Object.keys(stockTakeDraft)) {
+    const cut = key.indexOf('|'), itemId = key.slice(0, cut), loc = key.slice(cut + 1);
+    if (String(stockTakeDraft[key]).trim() === '') { delete stockTakeDraft[key]; continue; }
+    await updateStockTakeQty(itemId, loc, stockTakeDraft[key]);
+    if (stockTakeDraft[key] !== undefined) failed++;
+  }
+  return failed;
+}
+
+// ════════════════════════════════════════
+//  STOCK TAKE COUNT SHEET
+//  Download a sheet for the location being counted, write the counts in
+//  (on paper, then type them down the column; or straight into Excel),
+//  upload it, review the differences, apply them all in one go.
+//  Rows are matched by barcode. A blank Counted cell = not counted, left alone.
+// ════════════════════════════════════════
+const ST_COUNT_PREFIX = 'Counted: ';
+function stSheetLocations() { return currentStockTakeLocation ? [currentStockTakeLocation] : LOCATIONS.slice(); }
+
+function downloadStockTakeSheet() {
+  const locs = stSheetLocations();
+  const list = stScopedItems().filter(i => !i.isTestData || currentUser?.isTester)
+    .sort((a, b) => (a.category||'').localeCompare(b.category||'') || (a.name||'').localeCompare(b.name||'', 'en', { numeric: true }));
+  const header = ['Barcode', 'Category', 'Item'];
+  locs.forEach(l => header.push('App says: ' + l, ST_COUNT_PREFIX + l));
+  const rows = [header];
+  list.forEach(i => {
+    const il = getLocations(i), r = [i.barcode || '', i.category || '', i.name || ''];
+    locs.forEach(l => r.push(il[l] || 0, ''));
+    rows.push(r);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 14 }, { wch: 24 }, { wch: 52 }].concat(locs.flatMap(() => [{ wch: 13 }, { wch: 13 }]));
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: header.length - 1 } }) };
+  const help = XLSX.utils.aoa_to_sheet([
+    ['How to use this count sheet'],
+    ['1. Write what you actually count in the "Counted" column. Type 0 if there is none.'],
+    ['2. Leave Counted blank for anything you did not count. Blank rows are left exactly as they are.'],
+    ['3. Found something that is not on the list? Add a row at the bottom with its barcode (or its exact name) and the count.'],
+    ['4. Do not change the Barcode column. It is how each row is matched to the app.'],
+    ['5. Save the file, then in the app: Stock Take > open the same stock take > Upload filled-in sheet.'],
+    ['6. Check the list of differences on screen, then press Apply These Counts.'],
+    [''],
+    ['Printing: File > Print, landscape, "Fit all columns on one page". Count on paper, then type the numbers down the Counted column.'],
+  ]);
+  help['!cols'] = [{ wch: 120 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Count');
+  XLSX.utils.book_append_sheet(wb, help, 'How to use');
+  const tag = (currentStockTakeLocation || 'All Locations').replace(/[^A-Za-z0-9]+/g, '_');
+  XLSX.writeFile(wb, `Stock_Count_${tag}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  toast(`Count sheet downloaded: ${list.length} items`, 'success');
+}
+
+// Reads a filled-in sheet into a plan. Pure: no saving. Throws with a plain
+// message if the file is not a count sheet for this stock take.
+function parseStockTakeSheet(grid) {
+  const norm = v => String(v ?? '').trim();
+  const hIdx = grid.findIndex((r, i) => i < 10 && r.some(c => norm(c).toLowerCase() === 'barcode') && r.some(c => norm(c).toLowerCase().startsWith('counted')));
+  if (hIdx === -1) throw new Error('This does not look like a count sheet: no "Barcode" and "Counted" column headings found. Use ⬇ Download count sheet to get one.');
+  const head = grid[hIdx].map(norm);
+  const bcCol = head.findIndex(h => h.toLowerCase() === 'barcode');
+  const nameCol = head.findIndex(h => h.toLowerCase() === 'item');
+  const allowed = stSheetLocations();
+  const countCols = [];
+  head.forEach((h, c) => {
+    if (!h.toLowerCase().startsWith('counted')) return;
+    let loc = h.slice(h.indexOf(':') + 1).trim();
+    if (h.indexOf(':') === -1) loc = currentStockTakeLocation || '';
+    const match = LOCATIONS.find(l => l.toLowerCase() === loc.toLowerCase());
+    if (!match) throw new Error(`The sheet has a column "${h}" but there is no location called "${loc}" in the app.`);
+    if (!allowed.includes(match)) throw new Error(`This sheet is for ${match}, but the stock take you have open is for ${currentStockTakeLocation}. Close this one and open the ${match} stock take, then upload again.`);
+    countCols.push({ c, loc: match });
+  });
+  const live = items.filter(i => !i.isTestData || currentUser?.isTester);
+  const byBarcode = {}, byName = {};
+  live.forEach(i => { if (i.barcode) byBarcode[String(i.barcode).trim().toUpperCase()] = i; const n = (i.name||'').trim().toLowerCase(); (byName[n] = byName[n] || []).push(i); });
+  const perItem = {}, problems = []; let blank = 0;
+  for (let r = hIdx + 1; r < grid.length; r++) {
+    const row = grid[r] || [];
+    const bc = norm(row[bcCol]).toUpperCase(), nm = nameCol > -1 ? norm(row[nameCol]) : '';
+    const cells = countCols.map(cc => ({ ...cc, raw: norm(row[cc.c]) })).filter(x => x.raw !== '');
+    if (!bc && !nm) continue;
+    if (!cells.length) { blank++; continue; }
+    const label = nm || bc, where = `row ${r + 1}`;
+    let item = bc ? byBarcode[bc] : null;
+    if (!item && nm) { const hits = byName[nm.toLowerCase()] || []; if (hits.length === 1) item = hits[0]; else if (hits.length > 1) { problems.push(`${where}: "${label}" matches ${hits.length} items by name — add its barcode`); continue; } }
+    if (!item) { problems.push(`${where}: "${label}"${bc ? ' (' + bc + ')' : ''} is not in the app — add it to the app first, or check the barcode`); continue; }
+    for (const x of cells) {
+      const n = Number(x.raw.replace(/,/g, ''));
+      if (!isFinite(n) || n < 0 || Math.round(n) !== n) { problems.push(`${where}: "${label}" — "${x.raw}" is not a whole number of 0 or more`); continue; }
+      perItem[item.id] = perItem[item.id] || { item, counts: {} };
+      if (perItem[item.id].counts[x.loc] !== undefined && perItem[item.id].counts[x.loc] !== n) { problems.push(`${where}: "${label}" appears twice with different counts for ${x.loc} — the later one (${n}) is used`); }
+      perItem[item.id].counts[x.loc] = n;
+    }
+  }
+  const changes = [], same = [];
+  Object.values(perItem).forEach(({ item, counts }) => {
+    const il = getLocations(item);
+    Object.entries(counts).forEach(([loc, n]) => { const old = il[loc] || 0; (n === old ? same : changes).push({ item, loc, old, now: n }); });
+  });
+  changes.sort((a, b) => Math.abs(b.now - b.old) - Math.abs(a.now - a.old));
+  return { perItem, changes, same, problems, blank };
+}
+
+let stSheetPlan = null;
+async function openStockTakeSheetUpload(file) {
+  if (!file) return;
+  const body = document.getElementById('stSheetReviewBody');
+  document.getElementById('stSheetProgress').style.display = 'none';
+  const btn = document.getElementById('stSheetApplyBtn'); btn.style.display = 'none'; btn.disabled = false; btn.textContent = '✓ Apply These Counts';
+  body.innerHTML = '<div style="text-align:center;color:#4a6880;font-size:12px;padding:16px 0">Reading sheet…</div>';
+  document.getElementById('stSheetReviewModal').classList.add('open');
+  try {
+    await flushStockTakeDrafts();
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const sheet = wb.Sheets['Count'] || wb.Sheets[wb.SheetNames[0]];
+    stSheetPlan = parseStockTakeSheet(XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false }));
+    const { changes, same, problems, blank, perItem } = stSheetPlan;
+    const esc = v => String(v ?? '').replace(/</g, '&lt;');
+    const chip = (t, bg, fg) => `<span style="background:${bg};color:${fg};padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600">${t}</span>`;
+    body.innerHTML = `
+      <p style="font-size:11px;color:#6b8fad;margin-bottom:10px">From <strong style="color:#8ab4d8">${esc(file.name)}</strong> for ${esc(currentStockTakeLocation || 'all locations')}. Nothing has been changed yet.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+        ${chip(`${changes.length} will change`, '#0f2e1a', '#4cdf8a')}
+        ${chip(`${same.length} already right`, '#0f1e30', '#6b8fad')}
+        ${chip(`${blank} left blank (untouched)`, '#0f1e30', '#6b8fad')}
+        ${problems.length ? chip(`⚠ ${problems.length} row${problems.length !== 1 ? 's' : ''} skipped`, '#3a0808', '#ff6b6b') : ''}
+      </div>
+      ${problems.length ? `<div style="background:#3a0808;border:1px solid #7f1d1d;border-radius:7px;padding:9px 11px;margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:#ff6b6b;margin-bottom:4px">These rows were skipped. Fix them in the sheet and upload again, or enter them by hand:</div>${problems.map(p => `<div style="font-size:11px;color:#e8edf2;padding:2px 0">${esc(p)}</div>`).join('')}</div>` : ''}
+      ${changes.length ? `<div style="font-size:10px;font-weight:700;color:#6b8fad;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Changes, biggest difference first</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:#4a6880;text-align:left"><th style="padding:4px 6px">Item</th><th style="padding:4px 6px">Location</th><th style="padding:4px 6px;text-align:right">App</th><th style="padding:4px 6px;text-align:right">Counted</th><th style="padding:4px 6px;text-align:right">Diff</th></tr>
+        ${changes.map(c => { const d = c.now - c.old; return `<tr style="border-top:1px solid #1e3248"><td style="padding:4px 6px;color:#e8edf2">${esc(c.item.name)}</td><td style="padding:4px 6px;color:#6b8fad">${esc(c.loc)}</td><td style="padding:4px 6px;text-align:right;color:#6b8fad">${c.old}</td><td style="padding:4px 6px;text-align:right;color:#e8edf2;font-weight:600">${c.now}</td><td style="padding:4px 6px;text-align:right;color:${d < 0 ? '#ff6b6b' : '#4cdf8a'}">${d > 0 ? '+' : ''}${d}</td></tr>`; }).join('')}</table>`
+        : '<div style="color:#4a6880;font-size:12px;text-align:center;padding:10px">No stock figures need changing.</div>'}`;
+    if (Object.keys(perItem).length) { btn.style.display = ''; btn.textContent = changes.length ? `✓ Apply ${changes.length} Change${changes.length !== 1 ? 's' : ''} and Tick ${Object.keys(perItem).length} Items` : `✓ Tick ${Object.keys(perItem).length} Items as Counted`; }
+  } catch (e) {
+    stSheetPlan = null;
+    body.innerHTML = `<div style="color:#ff6b6b;font-size:12px;white-space:pre-wrap">Couldn't use that file: ${String(e.message).replace(/</g, '&lt;')}</div>`;
+  }
+}
+
+async function applyStockTakeSheet() {
+  if (!stSheetPlan || !currentStockTakeId) { toast('Upload the sheet again first', 'error'); return; }
+  const btn = document.getElementById('stSheetApplyBtn'), prog = document.getElementById('stSheetProgress');
+  btn.disabled = true; btn.textContent = '⏳ Applying…'; prog.style.display = 'block';
+  setSync('busy');
+  const entries = Object.values(stSheetPlan.perItem);
+  let done = 0, changed = 0;
+  try {
+    // Up to 100 items per batch: each item is at most 1 stock write + 1 log
+    // line per location, well inside Firestore's 500-operation limit.
+    for (let i = 0; i < entries.length; i += 100) {
+      const batch = db.batch(), applied = [];
+      entries.slice(i, i + 100).forEach(({ item, counts }) => {
+        const fresh = items.find(x => x.id === item.id) || item;
+        const cur = getLocations(fresh), newLocs = { ...cur };
+        const diffs = Object.entries(counts).filter(([loc, n]) => (cur[loc] || 0) !== n);
+        diffs.forEach(([loc, n]) => { newLocs[loc] = n; });
+        if (diffs.length) {
+          batch.update(db.collection('items').doc(item.id), locationsUpdatePayload(newLocs));
+          diffs.forEach(([loc, n]) => batch.set(db.collection('log').doc(), {
+            type: 'qty', title: `Stock take update: ${fresh.name}`,
+            detail: `${currentUser.name} corrected ${loc} from ${cur[loc] || 0} to ${n} during stock take`,
+            user: currentUser?.name || 'System', ts: firebase.firestore.FieldValue.serverTimestamp() }));
+          changed += diffs.length;
+        }
+        applied.push({ fresh, newLocs, had: diffs.length > 0, counts });
+      });
+      await batch.commit();
+      applied.forEach(({ fresh, newLocs, had, counts }) => {
+        if (had) { if (currentUser?.isTester) fresh.testLocations = newLocs; else fresh.locations = newLocs; }
+        stockTakeChecked[fresh.id] = true;
+        if (currentStockTakeLocation) stockTakeExtra[fresh.id] = true; // keeps it on the list even at 0
+        Object.keys(counts).forEach(loc => delete stockTakeDraft[stDraftKey(fresh.id, loc)]);
+      });
+      done += applied.length;
+      prog.textContent = `Saved ${done} of ${entries.length} items…`;
+    }
+    await saveStockTakeProgress();
+    await logAction('edit', 'Stock take count sheet applied', `${currentUser.name} uploaded a count sheet for ${currentStockTakeLocation || 'all locations'}: ${changed} figure(s) corrected, ${entries.length} item(s) ticked as counted.`);
+    setSync('ok');
+    stSheetPlan = null;
+    closeModal('stSheetReviewModal');
+    renderStockTakeList();
+    toast(`Count sheet applied: ${changed} corrected, ${entries.length} ticked`, 'success');
+  } catch (e) {
+    setSync('err');
+    await saveStockTakeProgress();
+    renderStockTakeList();
+    prog.textContent = `Stopped: ${e.message}. ${done} of ${entries.length} items were saved. Upload the same sheet again to finish — items already saved will show as "already right".`;
+    btn.disabled = false; btn.textContent = '✓ Apply These Counts';
+  }
 }
 
 async function saveStockTakeProgress() {
@@ -4015,9 +4304,9 @@ async function saveStockTakeProgress() {
 }
 
 async function completeStockTake() {
-  const scoped = currentStockTakeLocation
-    ? items.filter(i => (getLocations(i)[currentStockTakeLocation]||0) > 0 || stockTakeChecked[i.id] || stockTakeExtra[i.id])
-    : items;
+  const unsaved = await flushStockTakeDrafts();
+  if (unsaved) { toast(`${unsaved} count${unsaved!==1?'s':''} could not be saved — check your connection and try again before completing`, 'error'); return; }
+  const scoped = stScopedItems();
   const checkedCount = scoped.filter(i => stockTakeChecked[i.id]).length;
   if (checkedCount < scoped.length) {
     const remaining = scoped.length - checkedCount;
@@ -5829,7 +6118,7 @@ function onScanNameSearchInput(query) {
   const resultsEl = document.getElementById('scanNameSearchResults');
   const q = query.trim().toLowerCase();
   if (!q) { resultsEl.style.display = 'none'; return; }
-  const matches = items.filter(it => it.name.toLowerCase().includes(q) || (it.notes||'').toLowerCase().includes(q)).slice(0, 8);
+  const matches = items.filter(it => itemMatchesSearch(it, q)).slice(0, 8);
   let html = matches.map(it => `<div onmousedown="selectScanNameSearchItem('${it.id}')" style="padding:9px 10px;cursor:pointer;font-size:13px;color:#e8edf2;border-bottom:1px solid #0f1923" onmouseover="this.style.background='#0f1923'" onmouseout="this.style.background=''">${it.name}</div>`).join('');
   if (!matches.length) html += '<div style="padding:9px 10px;font-size:12px;color:#4a6880">No matches</div>';
   html += `<div onmousedown="openUnregisteredItemModal('scan', '${query.replace(/'/g,"\\'")}')" style="padding:9px 10px;cursor:pointer;font-size:12px;color:#f0a020;font-weight:600;border-top:1px solid #0f1923">🚩 Can't find it? Log Unregistered Item...</div>`;
@@ -5993,7 +6282,7 @@ function openPrintLabels() {
 
 function renderLabelPicker() {
   const q = (document.getElementById('labelSearch').value||'').toLowerCase();
-  const filtered = items.filter(i => !q || (i.name||'').toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q));
+  const filtered = items.filter(i => !q || itemMatchesSearch(i, q));
   const sorted = [...filtered].sort((a,b) => (a.name||'').localeCompare(b.name||''));
   document.getElementById('selectedLabelCount').textContent = labelPickerSelected.size;
   document.getElementById('labelPickerList').innerHTML = sorted.map(item => `
@@ -6242,7 +6531,7 @@ function onJobNameSearchInput(query) {
   const resultsEl = document.getElementById('jobNameSearchResults');
   const q = query.trim().toLowerCase();
   if (!q) { resultsEl.style.display = 'none'; return; }
-  const matches = items.filter(it => it.name.toLowerCase().includes(q) || (it.notes||'').toLowerCase().includes(q)).slice(0, 8);
+  const matches = items.filter(it => itemMatchesSearch(it, q)).slice(0, 8);
   let html = matches.map(it => `<div onmousedown="selectJobNameSearchItem('${it.id}')" style="padding:8px 10px;cursor:pointer;font-size:12px;color:#e8edf2;border-bottom:1px solid #0f1e30" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('');
   if (!matches.length) html += '<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches</div>';
   html += `<div onmousedown="openUnregisteredItemModal('job', '${query.replace(/'/g,"\\'")}')" style="padding:8px 10px;cursor:pointer;font-size:11px;color:#f0a020;font-weight:600;border-top:1px solid #0f1e30">🚩 Can't find it? Log Unregistered Item...</div>`;
@@ -6839,7 +7128,7 @@ function onDelItemSearchInput(i, query) {
   deliveryItemRowData[i].name = query;
   deliveryItemRowData[i].itemId = ''; // typing invalidates any previous selection until they pick again
   const q = query.trim().toLowerCase();
-  const matches = (q ? items.filter(it => it.name.toLowerCase().includes(q)) : items).slice(0, 8);
+  const matches = (q ? items.filter(it => itemMatchesSearch(it, q)) : items).slice(0, 8);
   const rowStyle = 'padding:8px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid #0f1e30';
   let html = matches.map(it => `<div onmousedown="selectDelItem(${i},'${it.id}')" style="${rowStyle};color:#e8edf2" onmouseover="this.style.background='#0f1e30'" onmouseout="this.style.background=''">${it.name}</div>`).join('');
   if (!matches.length) html += `<div style="padding:8px 10px;font-size:11px;color:#4a6880">No matches</div>`;
@@ -7442,11 +7731,11 @@ const HELP_GUIDES = [
 
 function renderProcessOverview() {
   const stages = [
-    { icon: '📝', title: 'Quote & Order', role: 'Rachel & Dan', desc: 'Job priced up, materials order form created and checked against current stock' },
+    { icon: '📝', title: 'Quote & Order', role: 'Laura & Dan', desc: 'Job priced up, materials order form created and checked against current stock' },
     { icon: '🚚', title: 'Receive Stock', role: 'Engineers', desc: 'Delivery confirmed, quantities checked, added to van/yard stock' },
     { icon: '🗄️', title: 'Manage Stock', role: 'Everyone', desc: 'Scanning, stock takes, transfers & corrections keep the numbers accurate day to day' },
     { icon: '🔧', title: 'Do the Job', role: 'Engineers', desc: 'Materials used get logged on site, stock deducts automatically' },
-    { icon: '💷', title: 'Cost & Report', role: 'Rachel & Dan', desc: 'Job material cost calculated automatically, reviewed in Job Reports' },
+    { icon: '💷', title: 'Cost & Report', role: 'Laura & Dan', desc: 'Job material cost calculated automatically, reviewed in Job Reports' },
     { icon: '🔄', title: 'Sync the Data', role: 'Automatic', desc: 'App and master spreadsheet stay lined up, so the next quote starts from accurate prices' }
   ];
   return `
