@@ -884,6 +884,7 @@ td{padding:8px 9px;vertical-align:middle}
     <div id="stDiscrepancyRows" style="max-height:420px;overflow-y:auto"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('stDiscrepancyModal')">Close</button>
+      <button class="btn btn-primary" id="stDiscrepancyDownloadBtn" onclick="downloadStockTakeDiscrepancies()">⬇ Download (Excel)</button>
     </div>
   </div>
 </div>
@@ -3691,7 +3692,7 @@ async function viewStockTakeDiscrepancies(stocktakeId) {
     snap.forEach(doc => {
       const d = doc.data();
       if (d.type !== 'qty' || !d.detail?.includes('during stock take')) return;
-      const m = d.detail.match(/^(.+) corrected (.+) from (\d+) to (\d+) during stock take$/);
+      const m = d.detail.match(/^(.+) corrected (.+) from (-?\d+) to (-?\d+) during stock take$/);
       if (!m) return;
       const oldVal = parseInt(m[3]), newVal = parseInt(m[4]);
       rows.push({
@@ -3700,9 +3701,45 @@ async function viewStockTakeDiscrepancies(stocktakeId) {
       });
     });
     rows.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+    stDiscrepancyLast = { rows, location: stData.location || null, startedAt: startTs, completedAt: stData.completedAt || null, completedBy: stData.completedBy || '' };
+    document.getElementById('stDiscrepancyDownloadBtn').style.display = rows.length ? '' : 'none';
     renderStockTakeDiscrepancyReport(rows);
     document.getElementById('stDiscrepancyModal').classList.add('open');
   } catch (e) { toast('Could not load report: ' + e.message, 'error'); }
+}
+
+// The report currently on screen, kept so it can be downloaded as shown.
+let stDiscrepancyLast = null;
+function downloadStockTakeDiscrepancies() {
+  const rep = stDiscrepancyLast;
+  if (!rep || !rep.rows.length) { toast('Nothing to download', 'error'); return; }
+  const byName = {};
+  items.forEach(i => { const n = (i.name||'').trim(); (byName[n] = byName[n] || []).push(i); });
+  const day = ts => ts?.toDate ? fmtDate(ts.toDate()) : '';
+  const where = rep.location || 'All locations';
+  const out = [
+    ['Stock Take Discrepancy Report'],
+    ['Location', where],
+    ['Started', day(rep.startedAt)],
+    ['Completed', rep.completedAt ? day(rep.completedAt) + (rep.completedBy ? ' by ' + rep.completedBy : '') : 'In progress'],
+    ['Corrections', rep.rows.length, 'Lower than expected', rep.rows.filter(r => r.diff < 0).length, 'Higher than expected', rep.rows.filter(r => r.diff > 0).length],
+    [],
+    ['Item', 'Category', 'Barcode', 'Location', 'App figure', 'Counted', 'Difference', 'Corrected by', 'Date'],
+  ];
+  const headRow = out.length - 1;
+  rep.rows.forEach(r => {
+    const hit = (byName[(r.itemName||'').trim()] || []);
+    const it = hit.length === 1 ? hit[0] : null; // only when the name is unambiguous
+    out.push([r.itemName, it?.category || '', it?.barcode || '', r.location, r.oldVal, r.newVal, r.diff, r.correctedBy, day(r.ts)]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(out);
+  ws['!cols'] = [{ wch: 50 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 11 }, { wch: 10 }, { wch: 11 }, { wch: 14 }, { wch: 12 }];
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: headRow, c: 0 }, e: { r: out.length - 1, c: 8 } }) };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Discrepancies');
+  const d = rep.completedAt?.toDate ? rep.completedAt.toDate() : new Date();
+  XLSX.writeFile(wb, `Stock_Take_Discrepancies_${where.replace(/[^A-Za-z0-9]+/g, '_')}_${d.toISOString().slice(0, 10)}.xlsx`);
+  toast('Discrepancy report downloaded', 'success');
 }
 
 function renderStockTakeDiscrepancyReport(rows) {
@@ -3953,7 +3990,7 @@ async function loadPreviousStockTakeQtys(location) {
       const d = doc.data();
       if (d.type !== 'qty' || !d.title?.startsWith('Stock take update:')) return;
       const itemName = d.title.replace('Stock take update:','').trim();
-      const m = d.detail?.match(/from (\d+) to (\d+) during stock take$/);
+      const m = d.detail?.match(/from (-?\d+) to (-?\d+) during stock take$/);
       if (m) byName[itemName] = parseInt(m[2]);
     });
     items.forEach(it => { if (byName[it.name] !== undefined) previousStockTakeQtyMap[it.id] = byName[it.name]; });
